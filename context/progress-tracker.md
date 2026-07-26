@@ -3,10 +3,10 @@
 Update this file whenever the current phase, active feature, or implementation state changes.
 
 ## Current Phase
-- Feature 05: Prisma Setup — complete
+- Feature 07: Wire Editor Home — complete
 
 ## Current Goal
-- Feature 06 (TBD)
+- Feature 08 (TBD)
 
 ## Completed
 
@@ -15,13 +15,15 @@ Update this file whenever the current phase, active feature, or implementation s
 - Feature 03: Auth — @clerk/ui installed. ClerkProvider wraps root layout with dark theme from @clerk/ui/themes, overriding appearance variables using CSS tokens (no hardcoded colors). proxy.ts at project root uses clerkMiddleware + createRouteMatcher to protect all routes except /sign-in and /sign-up (resolved from NEXT_PUBLIC_CLERK_SIGN_IN_URL / NEXT_PUBLIC_CLERK_SIGN_UP_URL env vars). Sign-in and sign-up pages use a minimal two-panel layout (left panel with logo/tagline/feature list hidden on mobile, right panel with centered Clerk form). app/page.tsx redirects authenticated users to /editor and unauthenticated users to /sign-in. UserButton added to EditorNavbar right section. app/editor/page.tsx shell created with sidebar state management.
 - Feature 04: Project Dialogs — hooks/use-project-dialogs.ts manages dialog/form/loading state and mock project data (CRUD operations on local state). components/editor/project-dialogs.tsx renders Create (name + live slug preview), Rename (prefilled, auto-focus, Enter submits), and Delete (destructive confirm) dialogs. ProjectSidebar updated with project item list showing rename/delete actions on hover for owned projects only, shared projects shown without actions, mobile backdrop scrim added. app/editor/page.tsx updated with centered home screen (heading, description, New Project button) wired to Create dialog. TypeScript and ESLint clean.
 - Feature 05: Prisma Setup — prisma/models/project.prisma adds Project (ownerId, name, description?, status enum DRAFT/ARCHIVED, canvasJsonPath?, timestamps, indexes on ownerId and createdAt) and ProjectCollaborator (projectId cascade, email, createdAt, unique on project/email, indexes on email and project/date). lib/prisma.ts exports a cached PrismaClient singleton using @prisma/adapter-pg. Migration 20260428095100_init applied to hosted Prisma Postgres DB. Client generated to app/generated/prisma. Build clean.
+- Feature 06: Project APIs — app/api/projects/route.ts (GET list by ownerId ordered by createdAt desc, POST create with default name "Untitled Project") and app/api/projects/[projectId]/route.ts (PATCH rename, DELETE delete). Auth via Clerk auth(); 401 for unauthenticated, 403 for non-owner mutations, 404 when project missing. Build clean.
+- Feature 07: Wire Editor Home — app/editor/page.tsx converted to server component; fetches owned projects (by ownerId) and shared projects (via ProjectCollaborator email lookup) using lib/projects.ts getProjectsForUser(). EditorHomeClient (components/editor/editor-home-client.tsx) is the new client shell receiving serialized ProjectRow arrays. hooks/use-project-actions.ts replaces mock hook: create generates roomId (slugify+suffix), POSTs to /api/projects with custom id field, navigates to /editor/[id]; rename PATCHes and router.refresh(); delete DELETEs and redirects to /editor if active workspace else refresh. POST API updated to accept optional id. ProjectSidebar updated to accept ownedProjects/sharedProjects separately; project items link to /editor/[id]. ProjectDialogs updated to use useProjectActions type, slug renamed to roomId. Build clean.
 
 ## In Progress
 
 - None.
 
 ## Next Up
-- Feature 06 (TBD)
+- Feature 08 (TBD)
 
 ## Open Questions
 

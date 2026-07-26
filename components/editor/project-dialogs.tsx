@@ -10,15 +10,15 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import type { useProjectDialogs } from "@/hooks/use-project-dialogs"
+import type { useProjectActions } from "@/hooks/use-project-actions"
 
-type ProjectDialogsProps = ReturnType<typeof useProjectDialogs>
+type ProjectDialogsProps = ReturnType<typeof useProjectActions>
 
 export function ProjectDialogs({
   dialogType,
   activeProject,
   name,
-  slug,
+  roomId,
   loading,
   close,
   handleNameChange,
@@ -47,7 +47,7 @@ export function ProjectDialogs({
               autoFocus
             />
             <p className="min-h-4 text-xs text-muted-foreground font-mono">
-              {slug ? slug : ""}
+              {roomId ? roomId : ""}
             </p>
           </div>
 

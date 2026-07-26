@@ -1,30 +1,30 @@
 "use client"
 
+import Link from "next/link"
 import { X, Plus, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import type { Project } from "@/hooks/use-project-dialogs"
+import type { ProjectRow } from "@/hooks/use-project-actions"
 
 interface ProjectSidebarProps {
   isOpen: boolean
   onClose: () => void
-  projects: Project[]
+  ownedProjects: ProjectRow[]
+  sharedProjects: ProjectRow[]
   onNewProject: () => void
-  onRename: (project: Project) => void
-  onDelete: (project: Project) => void
+  onRename: (project: ProjectRow) => void
+  onDelete: (project: ProjectRow) => void
 }
 
 export function ProjectSidebar({
   isOpen,
   onClose,
-  projects,
+  ownedProjects,
+  sharedProjects,
   onNewProject,
   onRename,
   onDelete,
 }: ProjectSidebarProps) {
-  const ownedProjects = projects.filter((p) => p.owned)
-  const sharedProjects = projects.filter((p) => !p.owned)
-
   return (
     <>
       {isOpen && (
@@ -114,22 +114,27 @@ export function ProjectSidebar({
 }
 
 interface ProjectItemProps {
-  project: Project
-  onRename?: (project: Project) => void
-  onDelete?: (project: Project) => void
+  project: ProjectRow
+  onRename?: (project: ProjectRow) => void
+  onDelete?: (project: ProjectRow) => void
 }
 
 function ProjectItem({ project, onRename, onDelete }: ProjectItemProps) {
   return (
-    <div className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/50 cursor-pointer">
-      <span className="flex-1 text-sm truncate text-text-primary">{project.name}</span>
+    <div className="group flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted/50">
+      <Link
+        href={`/editor/${project.id}`}
+        className="flex-1 min-w-0 text-sm truncate text-text-primary"
+      >
+        {project.name}
+      </Link>
       {onRename && onDelete && (
         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={(e) => {
-              e.stopPropagation()
+              e.preventDefault()
               onRename(project)
             }}
           >
@@ -140,7 +145,7 @@ function ProjectItem({ project, onRename, onDelete }: ProjectItemProps) {
             variant="ghost"
             size="icon-sm"
             onClick={(e) => {
-              e.stopPropagation()
+              e.preventDefault()
               onDelete(project)
             }}
           >

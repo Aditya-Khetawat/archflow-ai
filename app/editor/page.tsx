@@ -1,48 +1,21 @@
-"use client"
+import { auth, currentUser } from "@clerk/nextjs/server"
+import { redirect } from "next/navigation"
+import { getProjectsForUser } from "@/lib/projects"
+import { EditorHomeClient } from "@/components/editor/editor-home-client"
 
-import { useState } from "react"
-import { Plus } from "lucide-react"
-import { EditorNavbar } from "@/components/editor/editor-navbar"
-import { ProjectSidebar } from "@/components/editor/project-sidebar"
-import { ProjectDialogs } from "@/components/editor/project-dialogs"
-import { Button } from "@/components/ui/button"
-import { useProjectDialogs } from "@/hooks/use-project-dialogs"
+export default async function EditorPage() {
+  const { userId } = await auth()
+  if (!userId) redirect("/sign-in")
 
-export default function EditorPage() {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const dialogs = useProjectDialogs()
+  const user = await currentUser()
+  const email = user?.primaryEmailAddress?.emailAddress ?? ""
+
+  const { owned, shared } = await getProjectsForUser(userId, email)
 
   return (
-    <div className="flex flex-col h-screen bg-bg-base">
-      <EditorNavbar
-        isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen((prev) => !prev)}
-      />
-      <ProjectSidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        projects={dialogs.projects}
-        onNewProject={dialogs.openCreate}
-        onRename={dialogs.openRename}
-        onDelete={dialogs.openDelete}
-      />
-      <main className="flex-1 overflow-hidden flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center px-4">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-xl font-medium text-text-primary">
-              Create a project or open an existing one
-            </h1>
-            <p className="text-sm text-text-muted">
-              Start a new architecture workspace, or choose a project from the sidebar.
-            </p>
-          </div>
-          <Button onClick={dialogs.openCreate} className="gap-2">
-            <Plus className="h-4 w-4" />
-            New Project
-          </Button>
-        </div>
-      </main>
-      <ProjectDialogs {...dialogs} />
-    </div>
+    <EditorHomeClient
+      ownedProjects={owned.map((p) => ({ id: p.id, name: p.name }))}
+      sharedProjects={shared.map((p) => ({ id: p.id, name: p.name }))}
+    />
   )
 }
