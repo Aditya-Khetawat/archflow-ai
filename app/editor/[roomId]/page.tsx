@@ -31,6 +31,7 @@ export default async function EditorWorkspacePage(
       currentProject={{ id: project.id, name: project.name }}
       ownedProjects={owned.map((item) => ({ id: item.id, name: item.name }))}
       sharedProjects={shared.map((item) => ({ id: item.id, name: item.name }))}
+      roomId={roomId}
     />
   )
 }

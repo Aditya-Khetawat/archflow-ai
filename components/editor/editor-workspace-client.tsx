@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Bot, Compass, Sparkles } from "lucide-react"
+import { Bot, Sparkles } from "lucide-react"
 import { EditorNavbar } from "@/components/editor/editor-navbar"
 import { ProjectDialogs } from "@/components/editor/project-dialogs"
 import { ProjectShareDialog } from "@/components/editor/project-share-dialog"
 import { ProjectSidebar } from "@/components/editor/project-sidebar"
+import { CanvasRoom } from "@/components/editor/canvas/canvas-room"
 import { useProjectActions, type ProjectRow } from "@/hooks/use-project-actions"
 import { cn } from "@/lib/utils"
 
@@ -13,12 +14,14 @@ interface EditorWorkspaceClientProps {
   currentProject: ProjectRow
   ownedProjects: ProjectRow[]
   sharedProjects: ProjectRow[]
+  roomId: string
 }
 
 export function EditorWorkspaceClient({
   currentProject,
   ownedProjects,
   sharedProjects,
+  roomId,
 }: EditorWorkspaceClientProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [aiSidebarOpen, setAiSidebarOpen] = useState(true)
@@ -56,27 +59,7 @@ export function EditorWorkspaceClient({
       >
         <div className="grid h-full min-h-0 gap-3">
           <section className="relative flex min-h-0 flex-1 overflow-hidden rounded-3xl border border-border-subtle bg-bg-surface">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,var(--color-accent-primary-dim),transparent_38%)]" />
-            <div className="pointer-events-none absolute bottom-[-3rem] right-[-2rem] h-56 w-56 rounded-full bg-accent-ai/12 blur-3xl" />
-            <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(to_right,var(--color-border-default)_1px,transparent_1px),linear-gradient(to_bottom,var(--color-border-default)_1px,transparent_1px)] [background-size:56px_56px]" />
-            <div className="relative flex flex-1 items-center justify-center px-6">
-              <div className="flex max-w-lg flex-col items-center text-center">
-                <div className="mb-5 rounded-2xl border border-border-subtle bg-bg-elevated p-4">
-                  <Compass className="h-8 w-8 text-accent-primary" />
-                </div>
-                <p className="text-xs font-medium uppercase tracking-[0.22em] text-text-faint">
-                  Workspace Shell
-                </p>
-                <h1 className="mt-3 text-2xl font-medium text-text-primary">
-                  Canvas and collaboration tooling land here next.
-                </h1>
-                <p className="mt-3 text-sm leading-6 text-text-muted">
-                  This room is ready for the shared architecture canvas, durable AI
-                  workflows, and real-time presence. For now, the shell is wired with
-                  project context and navigation only.
-                </p>
-              </div>
-            </div>
+            <CanvasRoom roomId={roomId} />
           </section>
         </div>
       </main>
