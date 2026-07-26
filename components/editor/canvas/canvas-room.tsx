@@ -11,19 +11,21 @@ interface CanvasRoomProps {
 
 export function CanvasRoom({ roomId }: CanvasRoomProps) {
   return (
-    <LiveblocksProvider authEndpoint="/api/liveblocks-auth">
-      <RoomProvider
-        id={roomId}
-        initialPresence={{ cursor: null, isThinking: false }}
-        initialStorage={new LiveObject({ nodes: new LiveMap(), edges: new LiveMap() })}
-      >
-        <ClientSideSuspense fallback={<CanvasLoading />}>
-          <ReactFlowProvider>
-            <CanvasEditor />
-          </ReactFlowProvider>
-        </ClientSideSuspense>
-      </RoomProvider>
-    </LiveblocksProvider>
+    <div className="h-full w-full">
+      <LiveblocksProvider authEndpoint="/api/liveblocks-auth">
+        <RoomProvider
+          id={roomId}
+          initialPresence={{ cursor: null, isThinking: false }}
+          initialStorage={new LiveObject({ nodes: new LiveMap(), edges: new LiveMap() })}
+        >
+          <ClientSideSuspense fallback={<CanvasLoading />}>
+            <ReactFlowProvider>
+              <CanvasEditor />
+            </ReactFlowProvider>
+          </ClientSideSuspense>
+        </RoomProvider>
+      </LiveblocksProvider>
+    </div>
   )
 }
 

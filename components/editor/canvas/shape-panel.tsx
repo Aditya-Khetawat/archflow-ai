@@ -1,6 +1,5 @@
 "use client"
 
-import { Panel } from "@xyflow/react"
 import {
   RectangleHorizontal,
   Diamond,
@@ -29,8 +28,8 @@ export function ShapePanel() {
   }
 
   return (
-    <Panel position="bottom-center" className="mb-4">
-      <div className="flex items-center gap-1 rounded-full border border-border-default bg-bg-surface/95 px-3 py-2 shadow-xl backdrop-blur-xl">
+    <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+      <div className="pointer-events-auto flex items-center gap-1 rounded-full border border-border-default bg-bg-surface/95 px-3 py-2 shadow-xl backdrop-blur-xl">
         {NODE_SHAPES.map((shape) => {
           const Icon = SHAPE_ICONS[shape]
           return (
@@ -46,6 +45,6 @@ export function ShapePanel() {
           )
         })}
       </div>
-    </Panel>
+    </div>
   )
 }

@@ -39,6 +39,10 @@ export function EditorWorkspaceClient({
         onOpenShareDialog={() => setShareDialogOpen(true)}
       />
 
+      <main className="relative min-h-0 flex-1 overflow-hidden">
+        <CanvasRoom roomId={roomId} />
+      </main>
+
       <ProjectSidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -49,20 +53,6 @@ export function EditorWorkspaceClient({
         onDelete={actions.openDelete}
         activeProjectId={currentProject.id}
       />
-
-      <main
-        className={cn(
-          "min-h-0 flex-1 px-3 pb-3 pt-3 transition-[padding] duration-200",
-          sidebarOpen ? "md:pl-[19.5rem]" : "md:pl-3",
-          aiSidebarOpen ? "md:pr-[22rem]" : "md:pr-3"
-        )}
-      >
-        <div className="grid h-full min-h-0 gap-3">
-          <section className="relative flex min-h-0 flex-1 overflow-hidden rounded-3xl border border-border-subtle bg-bg-surface">
-            <CanvasRoom roomId={roomId} />
-          </section>
-        </div>
-      </main>
 
       <aside
         className={cn(
