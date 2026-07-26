@@ -3,6 +3,7 @@
 import { useRef } from "react"
 import { useOthers } from "@liveblocks/react"
 import { useReactFlow, useViewport } from "@xyflow/react"
+import { Loader2 } from "lucide-react"
 
 export function PresenceCursors() {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -49,9 +50,12 @@ export function PresenceCursors() {
               />
             </svg>
             <div
-              className="mt-0.5 rounded px-1.5 py-0.5 text-xs font-medium text-white"
+              className="mt-0.5 flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-white"
               style={{ background: color, whiteSpace: "nowrap" }}
             >
+              {other.presence.thinking && (
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              )}
               {name}
             </div>
           </div>

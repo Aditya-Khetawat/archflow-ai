@@ -1,5 +1,7 @@
 "use client"
 
+import { LiveObject, LiveMap } from "@liveblocks/client"
+import { LiveblocksProvider, RoomProvider } from "@liveblocks/react"
 import { useCallback, useRef, useState } from "react"
 import { EditorNavbar } from "@/components/editor/editor-navbar"
 import type { SaveStatus } from "@/hooks/use-canvas-autosave"
@@ -38,54 +40,68 @@ export function EditorWorkspaceClient({
   const handleSaveReady = useCallback((fn: () => void) => { saveFnRef.current = fn }, [])
 
   return (
-    <div className="flex h-screen flex-col bg-bg-base">
-      <EditorNavbar
-        isOpen={sidebarOpen}
-        onToggle={() => setSidebarOpen((prev) => !prev)}
-        projectName={currentProject.name}
-        isAiSidebarOpen={aiSidebarOpen}
-        onToggleAiSidebar={() => setAiSidebarOpen((prev) => !prev)}
-        onOpenShareDialog={() => setShareDialogOpen(true)}
-        onOpenTemplates={() => setTemplatesOpen(true)}
-        saveStatus={saveStatus}
-        onSave={() => saveFnRef.current()}
-      />
+    <LiveblocksProvider authEndpoint="/api/liveblocks-auth">
+      <RoomProvider
+        id={roomId}
+        initialPresence={{ cursor: null, thinking: false }}
+        initialStorage={new LiveObject({
+          flow: new LiveObject({ nodes: new LiveMap(), edges: new LiveMap() }),
+        })}
+      >
+        <div className="flex h-screen flex-col bg-bg-base">
+          <EditorNavbar
+            isOpen={sidebarOpen}
+            onToggle={() => setSidebarOpen((prev) => !prev)}
+            projectName={currentProject.name}
+            isAiSidebarOpen={aiSidebarOpen}
+            onToggleAiSidebar={() => setAiSidebarOpen((prev) => !prev)}
+            onOpenShareDialog={() => setShareDialogOpen(true)}
+            onOpenTemplates={() => setTemplatesOpen(true)}
+            saveStatus={saveStatus}
+            onSave={() => saveFnRef.current()}
+          />
 
-      <main className="relative min-h-0 flex-1 overflow-hidden">
-        <CanvasRoom
-          roomId={roomId}
-          projectId={currentProject.id}
-          pendingTemplate={pendingTemplate}
-          onTemplateImported={() => setPendingTemplate(null)}
-          onSaveStatusChange={handleSaveStatusChange}
-          onSaveReady={handleSaveReady}
-        />
-      </main>
+          <main className="relative min-h-0 flex-1 overflow-hidden">
+            <CanvasRoom
+              projectId={currentProject.id}
+              pendingTemplate={pendingTemplate}
+              onTemplateImported={() => setPendingTemplate(null)}
+              onSaveStatusChange={handleSaveStatusChange}
+              onSaveReady={handleSaveReady}
+            />
+          </main>
 
-      <ProjectSidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        ownedProjects={ownedProjects}
-        sharedProjects={sharedProjects}
-        onNewProject={actions.openCreate}
-        onRename={actions.openRename}
-        onDelete={actions.openDelete}
-        activeProjectId={currentProject.id}
-      />
+          <ProjectSidebar
+            isOpen={sidebarOpen}
+            onClose={() => setSidebarOpen(false)}
+            ownedProjects={ownedProjects}
+            sharedProjects={sharedProjects}
+            onNewProject={actions.openCreate}
+            onRename={actions.openRename}
+            onDelete={actions.openDelete}
+            activeProjectId={currentProject.id}
+          />
 
-      <AiSidebar isOpen={aiSidebarOpen} onClose={() => setAiSidebarOpen(false)} />
+          <AiSidebar
+            isOpen={aiSidebarOpen}
+            onClose={() => setAiSidebarOpen(false)}
+            roomId={roomId}
+            projectId={currentProject.id}
+          />
 
-      <ProjectDialogs {...actions} />
-      <ProjectShareDialog
-        projectId={currentProject.id}
-        open={shareDialogOpen}
-        onOpenChange={setShareDialogOpen}
-      />
-      <StarterTemplatesModal
-        open={templatesOpen}
-        onOpenChange={setTemplatesOpen}
-        onImport={(template) => setPendingTemplate(template)}
-      />
-    </div>
+          <ProjectDialogs {...actions} />
+          <ProjectShareDialog
+            projectId={currentProject.id}
+            open={shareDialogOpen}
+            onOpenChange={setShareDialogOpen}
+          />
+          <StarterTemplatesModal
+            open={templatesOpen}
+            onOpenChange={setTemplatesOpen}
+            onImport={(template) => setPendingTemplate(template)}
+          />
+        </div>
+      </RoomProvider>
+    </LiveblocksProvider>
   )
 }
