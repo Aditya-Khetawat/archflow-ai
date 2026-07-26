@@ -1,18 +1,29 @@
 "use client"
 
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { PanelLeftClose, PanelLeftOpen, Share2, Sparkles } from "lucide-react"
 import { UserButton } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 
 interface EditorNavbarProps {
   isOpen: boolean
   onToggle: () => void
+  projectName?: string
+  isAiSidebarOpen?: boolean
+  onToggleAiSidebar?: () => void
+  onOpenShareDialog?: () => void
 }
 
-export function EditorNavbar({ isOpen, onToggle }: EditorNavbarProps) {
+export function EditorNavbar({
+  isOpen,
+  onToggle,
+  projectName,
+  isAiSidebarOpen = false,
+  onToggleAiSidebar,
+  onOpenShareDialog,
+}: EditorNavbarProps) {
   return (
-    <header className="h-12 shrink-0 flex items-center justify-between px-3 bg-bg-surface border-b border-border-default">
-      <div className="flex items-center">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border-default bg-bg-surface px-3">
+      <div className="flex min-w-0 items-center gap-3">
         <Button variant="ghost" size="icon" onClick={onToggle}>
           {isOpen ? (
             <PanelLeftClose className="h-5 w-5" />
@@ -21,9 +32,41 @@ export function EditorNavbar({ isOpen, onToggle }: EditorNavbarProps) {
           )}
           <span className="sr-only">Toggle sidebar</span>
         </Button>
+
+        {projectName ? (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-text-primary">{projectName}</p>
+            <p className="text-xs text-text-faint">Workspace</p>
+          </div>
+        ) : null}
       </div>
-      <div className="flex-1" />
-      <div className="flex items-center">
+
+      <div className="flex items-center gap-2">
+        {onToggleAiSidebar ? (
+          <>
+            {onOpenShareDialog ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={onOpenShareDialog}
+              >
+                <Share2 className="h-4 w-4" />
+                Share
+              </Button>
+            ) : null}
+            <Button
+              variant={isAiSidebarOpen ? "default" : "outline"}
+              size="sm"
+              className="gap-2"
+              onClick={onToggleAiSidebar}
+            >
+              <Sparkles className="h-4 w-4" />
+              AI
+            </Button>
+          </>
+        ) : null}
+
         <UserButton />
       </div>
     </header>

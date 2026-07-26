@@ -3,10 +3,10 @@
 Update this file whenever the current phase, active feature, or implementation state changes.
 
 ## Current Phase
-- Feature 07: Wire Editor Home — complete
+- Feature 09: Share Dialog — complete
 
 ## Current Goal
-- Feature 08 (TBD)
+- Feature 10 (TBD)
 
 ## Completed
 
@@ -17,13 +17,15 @@ Update this file whenever the current phase, active feature, or implementation s
 - Feature 05: Prisma Setup — prisma/models/project.prisma adds Project (ownerId, name, description?, status enum DRAFT/ARCHIVED, canvasJsonPath?, timestamps, indexes on ownerId and createdAt) and ProjectCollaborator (projectId cascade, email, createdAt, unique on project/email, indexes on email and project/date). lib/prisma.ts exports a cached PrismaClient singleton using @prisma/adapter-pg. Migration 20260428095100_init applied to hosted Prisma Postgres DB. Client generated to app/generated/prisma. Build clean.
 - Feature 06: Project APIs — app/api/projects/route.ts (GET list by ownerId ordered by createdAt desc, POST create with default name "Untitled Project") and app/api/projects/[projectId]/route.ts (PATCH rename, DELETE delete). Auth via Clerk auth(); 401 for unauthenticated, 403 for non-owner mutations, 404 when project missing. Build clean.
 - Feature 07: Wire Editor Home — app/editor/page.tsx converted to server component; fetches owned projects (by ownerId) and shared projects (via ProjectCollaborator email lookup) using lib/projects.ts getProjectsForUser(). EditorHomeClient (components/editor/editor-home-client.tsx) is the new client shell receiving serialized ProjectRow arrays. hooks/use-project-actions.ts replaces mock hook: create generates roomId (slugify+suffix), POSTs to /api/projects with custom id field, navigates to /editor/[id]; rename PATCHes and router.refresh(); delete DELETEs and redirects to /editor if active workspace else refresh. POST API updated to accept optional id. ProjectSidebar updated to accept ownedProjects/sharedProjects separately; project items link to /editor/[id]. ProjectDialogs updated to use useProjectActions type, slug renamed to roomId. Build clean.
+- Feature 08: Editor Workspace Shell — app/editor/[roomId]/page.tsx added as a server component using Next.js 16 async params, redirecting unauthenticated users to /sign-in and rendering components/editor/access-denied.tsx for missing or unauthorized rooms. lib/project-access.ts centralizes current Clerk identity lookup (userId + primary email) and project access checks by owner/collaborator. components/editor/editor-workspace-client.tsx renders the guarded workspace shell with project-aware navbar, active-room sidebar highlight, canvas placeholder, and toggleable right AI placeholder. components/editor/editor-navbar.tsx now supports project title plus share/AI actions, and components/editor/project-sidebar.tsx now auto-opens the correct tab for the active room. `npm run lint` and `npm run build` both pass.
+- Feature 09: Share Dialog — app/api/projects/[projectId]/collaborators/route.ts adds collaborator list/invite/remove endpoints with auth enforced for all access and owner-only checks for mutations. lib/project-collaborators.ts enriches stored collaborator emails with Clerk Backend user data (display names and avatars) without introducing a local user table, and normalizes collaborator emails to lowercase for storage and shared-project lookup consistency. components/editor/project-share-dialog.tsx and hooks/use-project-share.ts add the share modal opened from the workspace navbar, including owner-only invite/remove/copy-link controls plus read-only collaborator mode. components/editor/editor-navbar.tsx and components/editor/editor-workspace-client.tsx now wire the Share button into the workspace shell. `npm run lint` and `npm run build` both pass.
 
 ## In Progress
 
 - None.
 
 ## Next Up
-- Feature 08 (TBD)
+- Feature 10 (TBD)
 
 ## Open Questions
 
