@@ -68,10 +68,11 @@ export function CanvasEdgeComponent({
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       e.stopPropagation()
       if (e.key === "Enter" || e.key === "Escape") {
-        commitEdit()
+        e.preventDefault()
+        e.currentTarget.blur()
       }
     },
-    [commitEdit]
+    []
   )
 
   return (

@@ -59,9 +59,12 @@ export function CanvasEditor({ pendingTemplate, onTemplateImported }: CanvasEdit
   // Keep stable refs to the latest nodes/edges so the import effect
   // can read current state without being in its dependency array.
   const nodesRef = useRef(nodes)
-  nodesRef.current = nodes
   const edgesRef = useRef(edges)
-  edgesRef.current = edges
+
+  useEffect(() => {
+    nodesRef.current = nodes
+    edgesRef.current = edges
+  })
 
   useEffect(() => {
     if (!pendingTemplate) return
