@@ -241,10 +241,10 @@ export function CanvasNodeComponent({ id, data, selected }: NodeProps<CanvasNode
         />
       )}
 
-      <Handle type="source" position={Position.Top} className={HANDLE_CLS} />
-      <Handle type="source" position={Position.Bottom} className={HANDLE_CLS} />
-      <Handle type="source" position={Position.Left} className={HANDLE_CLS} />
-      <Handle type="source" position={Position.Right} className={HANDLE_CLS} />
+      <Handle id="top" type="source" position={Position.Top} className={HANDLE_CLS} />
+      <Handle id="bottom" type="source" position={Position.Bottom} className={HANDLE_CLS} />
+      <Handle id="left" type="source" position={Position.Left} className={HANDLE_CLS} />
+      <Handle id="right" type="source" position={Position.Right} className={HANDLE_CLS} />
     </div>
   )
 }

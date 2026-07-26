@@ -1,4 +1,4 @@
-import { put } from "@vercel/blob"
+import { get, put } from "@vercel/blob"
 import { prisma } from "@/lib/prisma"
 import { getCurrentProjectIdentity, userHasProjectAccess } from "@/lib/project-access"
 import type { NextRequest } from "next/server"
@@ -21,10 +21,10 @@ export async function GET(
 
   if (!project?.canvasBlobUrl) return Response.json({ canvas: null })
 
-  const res = await fetch(project.canvasBlobUrl)
-  if (!res.ok) return Response.json({ canvas: null })
+  const result = await get(project.canvasBlobUrl, { access: "private" })
+  if (!result || result.statusCode !== 200 || !result.stream) return Response.json({ canvas: null })
 
-  const canvas: unknown = await res.json()
+  const canvas: unknown = await new Response(result.stream).json()
   return Response.json({ canvas })
 }
 
@@ -41,9 +41,10 @@ export async function PUT(
 
   const body: unknown = await request.json().catch(() => ({}))
   const blob = await put(`canvas/${projectId}.json`, JSON.stringify(body), {
-    access: "public",
+    access: "private",
     contentType: "application/json",
     addRandomSuffix: false,
+    allowOverwrite: true,
   })
 
   await prisma.project.update({

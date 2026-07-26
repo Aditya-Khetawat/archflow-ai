@@ -1,8 +1,9 @@
 "use client"
 
-import { LayoutTemplate, PanelLeftClose, PanelLeftOpen, Share2, Sparkles } from "lucide-react"
+import { LayoutTemplate, PanelLeftClose, PanelLeftOpen, Save, Share2, Sparkles } from "lucide-react"
 import { UserButton } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
+import type { SaveStatus } from "@/hooks/use-canvas-autosave"
 
 interface EditorNavbarProps {
   isOpen: boolean
@@ -12,6 +13,8 @@ interface EditorNavbarProps {
   onToggleAiSidebar?: () => void
   onOpenShareDialog?: () => void
   onOpenTemplates?: () => void
+  saveStatus?: SaveStatus
+  onSave?: () => void
 }
 
 export function EditorNavbar({
@@ -22,6 +25,8 @@ export function EditorNavbar({
   onToggleAiSidebar,
   onOpenShareDialog,
   onOpenTemplates,
+  saveStatus,
+  onSave,
 }: EditorNavbarProps) {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border-default bg-bg-surface px-3">
@@ -46,6 +51,24 @@ export function EditorNavbar({
       <div className="flex items-center gap-2">
         {onToggleAiSidebar ? (
           <>
+            {onSave ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={onSave}
+                disabled={saveStatus === "saving"}
+              >
+                <Save className="h-4 w-4" />
+                {saveStatus === "saving"
+                  ? "Saving..."
+                  : saveStatus === "saved"
+                  ? "Saved"
+                  : saveStatus === "error"
+                  ? "Error"
+                  : "Save"}
+              </Button>
+            ) : null}
             {onOpenTemplates ? (
               <Button
                 variant="outline"
@@ -80,7 +103,7 @@ export function EditorNavbar({
           </>
         ) : null}
 
-        <UserButton />
+        {!onToggleAiSidebar ? <UserButton /> : null}
       </div>
     </header>
   )

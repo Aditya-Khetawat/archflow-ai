@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import type { CanvasNode, CanvasEdge } from "@/types/canvas"
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error"
@@ -9,15 +9,42 @@ export function useCanvasAutosave(
   projectId: string,
   nodes: CanvasNode[],
   edges: CanvasEdge[]
-): SaveStatus {
+): { status: SaveStatus; save: () => void } {
   const [status, setStatus] = useState<SaveStatus>("idle")
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const isMountedRef = useRef(true)
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hasMountedRef = useRef(false)
 
+  const nodesRef = useRef(nodes)
+  const edgesRef = useRef(edges)
+  const projectIdRef = useRef(projectId)
+
   useEffect(() => {
+    nodesRef.current = nodes
+    edgesRef.current = edges
+    projectIdRef.current = projectId
+  })
+
+  // Reset to idle after showing saved/error so the button returns to "Save".
+  useEffect(() => {
+    if (status !== "saved" && status !== "error") return
+    resetTimerRef.current = setTimeout(() => setStatus("idle"), 2000)
     return () => {
-      isMountedRef.current = false
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+    }
+  }, [status])
+
+  const doSave = useCallback(async () => {
+    setStatus("saving")
+    try {
+      const res = await fetch(`/api/projects/${projectIdRef.current}/canvas`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodes: nodesRef.current, edges: edgesRef.current }),
+      })
+      setStatus(res.ok ? "saved" : "error")
+    } catch {
+      setStatus("error")
     }
   }, [])
 
@@ -29,22 +56,7 @@ export function useCanvasAutosave(
     }
 
     if (timerRef.current) clearTimeout(timerRef.current)
-
-    timerRef.current = setTimeout(async () => {
-      if (!isMountedRef.current) return
-      setStatus("saving")
-      try {
-        const res = await fetch(`/api/projects/${projectId}/canvas`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nodes, edges }),
-        })
-        if (!isMountedRef.current) return
-        setStatus(res.ok ? "saved" : "error")
-      } catch {
-        if (isMountedRef.current) setStatus("error")
-      }
-    }, 2000)
+    timerRef.current = setTimeout(doSave, 2000)
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current)
@@ -52,5 +64,10 @@ export function useCanvasAutosave(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes, edges])
 
-  return status
+  const save = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    doSave()
+  }, [doSave])
+
+  return { status, save }
 }

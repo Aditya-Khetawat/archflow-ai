@@ -9,6 +9,8 @@ import {
   ConnectionMode,
   ConnectionLineType,
   MarkerType,
+  useNodes,
+  useEdges,
 } from "@xyflow/react"
 import "@xyflow/react/dist/style.css"
 import { useReactFlow } from "@xyflow/react"
@@ -25,7 +27,7 @@ import { PresenceCursors } from "@/components/editor/canvas/presence-cursors"
 import { CollaboratorAvatars } from "@/components/editor/canvas/collaborator-avatars"
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts"
 import type { CanvasTemplate } from "@/components/editor/starter-templates"
-import { useCanvasAutosave } from "@/hooks/use-canvas-autosave"
+import { useCanvasAutosave, type SaveStatus } from "@/hooks/use-canvas-autosave"
 
 const nodeTypes = { canvasNode: CanvasNodeComponent }
 const edgeTypes = { canvasEdge: CanvasEdgeComponent }
@@ -51,10 +53,12 @@ interface CanvasEditorProps {
   projectId: string
   pendingTemplate?: CanvasTemplate | null
   onTemplateImported?: () => void
+  onSaveStatusChange?: (status: SaveStatus) => void
+  onSaveReady?: (saveFn: () => void) => void
 }
 
-export function CanvasEditor({ projectId, pendingTemplate, onTemplateImported }: CanvasEditorProps) {
-  const { nodes, edges, onNodesChange, onEdgesChange } =
+export function CanvasEditor({ projectId, pendingTemplate, onTemplateImported, onSaveStatusChange, onSaveReady }: CanvasEditorProps) {
+  const { nodes, edges, onNodesChange, onEdgesChange, onDelete } =
     useLiveblocksFlow<CanvasNode, CanvasEdge>({ suspense: true })
 
   const reactFlow = useReactFlow()
@@ -114,7 +118,32 @@ export function CanvasEditor({ projectId, pendingTemplate, onTemplateImported }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const saveStatus = useCanvasAutosave(projectId, nodes, edges)
+  const { status: saveStatus, save } = useCanvasAutosave(projectId, nodes, edges)
+
+  useEffect(() => { onSaveStatusChange?.(saveStatus) }, [saveStatus, onSaveStatusChange])
+  useEffect(() => { onSaveReady?.(save) }, [save, onSaveReady])
+
+  // Delete selected nodes/edges on Delete or Backspace via Liveblocks mutation helpers.
+  const rfNodes = useNodes<CanvasNode>()
+  const rfEdges = useEdges<CanvasEdge>()
+  const rfNodesRef = useRef(rfNodes)
+  const rfEdgesRef = useRef(rfEdges)
+  useEffect(() => {
+    rfNodesRef.current = rfNodes
+    rfEdgesRef.current = rfEdges
+  })
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return
+      const target = e.target as HTMLElement
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable) return
+      const selNodes = rfNodesRef.current.filter((n) => n.selected)
+      const selEdges = rfEdgesRef.current.filter((ed) => ed.selected)
+      if (selNodes.length || selEdges.length) onDelete({ nodes: selNodes, edges: selEdges })
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [onDelete])
 
   const [, updateMyPresence] = useMyPresence()
 
@@ -182,7 +211,11 @@ export function CanvasEditor({ projectId, pendingTemplate, onTemplateImported }:
         return
       }
 
-      const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      const center = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+      const position = {
+        x: center.x - payload.size.width / 2,
+        y: center.y - payload.size.height / 2,
+      }
 
       const id = generateNodeId(payload.shape)
       const newNode: CanvasNode = {
@@ -219,7 +252,6 @@ export function CanvasEditor({ projectId, pendingTemplate, onTemplateImported }:
         connectionMode={ConnectionMode.Loose}
         connectionLineStyle={CONNECTION_LINE_STYLE}
         connectionLineType={ConnectionLineType.SmoothStep}
-        fitView
         className="bg-bg-base"
       >
         <Background
@@ -246,7 +278,7 @@ export function CanvasEditor({ projectId, pendingTemplate, onTemplateImported }:
   )
 }
 
-function SaveStatusIndicator({ status }: { status: ReturnType<typeof useCanvasAutosave> }) {
+function SaveStatusIndicator({ status }: { status: SaveStatus }) {
   if (status === "idle") return null
   return (
     <div className="pointer-events-none absolute bottom-16 left-1/2 -translate-x-1/2">
