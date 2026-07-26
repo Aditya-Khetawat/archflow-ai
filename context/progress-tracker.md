@@ -3,10 +3,10 @@
 Update this file whenever the current phase, active feature, or implementation state changes.
 
 ## Current Phase
-- Feature 18: Starter Templates — complete
+- Feature 21: Canvas Autosave — complete
 
 ## Current Goal
-- Feature 19 (TBD)
+- Feature 22 (TBD)
 
 ## Completed
 
@@ -28,13 +28,16 @@ Update this file whenever the current phase, active feature, or implementation s
 - Feature 16: Edge Behavior — CanvasEdgeData interface added (label?: string), CanvasEdge updated to use it. All node handles changed to type="source" so any handle can initiate a connection (ConnectionMode.Loose allows any-to-any). canvas-edge.tsx created: getSmoothStepPath for right-angle routing, BaseEdge with dim/bright stroke transitions, invisible 20px-wide path for easy hover/click, EdgeLabelRenderer at path midpoint. Double-click on edge or label starts inline edit; auto-growing input saves on blur/Enter/Escape via useMutation. Saved labels shown as pill badges; selected edge with no label shows faint hint. canvas-editor.tsx uses custom onConnect that creates canvasEdge with ArrowClosed markerEnd via onEdgesChange; connectionLineStyle and connectionLineType=SmoothStep set for preview consistency. `npm run build` passes clean.
 - Feature 17: Canvas Ergonomics — MiniMap removed. components/editor/canvas/canvas-controls.tsx added: pill-shaped floating bar at bottom-left with zoom out/fit view/zoom in (via useReactFlow), a thin divider, and undo/redo (via useUndo/useRedo/useCanUndo/useCanRedo from @liveblocks/react); disabled buttons are dimmed (opacity-30). hooks/useKeyboardShortcuts.ts created: receives ReactFlow instance + undo/redo handlers, listens on window keydown, skips INPUT/TEXTAREA/contentEditable targets; supports +/= zoom in, - zoom out, Cmd/Ctrl+Z undo, Cmd/Ctrl+Shift+Z redo, Cmd/Ctrl+Y redo. `npm run build` passes clean.
 - Feature 18: Starter Templates — components/editor/starter-templates.ts defines CanvasTemplate interface and CANVAS_TEMPLATES array with three templates (Microservices Architecture, CI/CD Pipeline, Event-Driven System) using shared canvas types and NODE_COLORS palette. components/editor/starter-templates-modal.tsx renders a Dialog with a 3-column card grid; each card has a lightweight SVG preview (bounds-fitted, edges as lines, nodes as shapes), the template name/description, and an Import button. canvas-editor.tsx accepts pendingTemplate/onTemplateImported props; a useEffect triggered by pendingTemplate clears current nodes/edges via onNodesChange/onEdgesChange then adds template items and calls fitView. canvas-room.tsx threads the new props through. editor-workspace-client.tsx holds templatesOpen and pendingTemplate state, renders StarterTemplatesModal, and passes onOpenTemplates to EditorNavbar. editor-navbar.tsx adds a LayoutTemplate button that is visible in workspace mode alongside Share/AI. `npm run build` passes clean.
+- Feature 19: Presence Avatars & Live Cursors — liveblocks.config.ts Presence type updated (isThinking → thinking). canvas-room.tsx initialPresence updated to match. components/editor/canvas/collaborator-avatars.tsx renders a top-right overlay inside the canvas: up to 5 collaborator avatars (photo or initials fallback, ring, overlapping stack, +N overflow chip) from useOthers filtered to exclude the current Clerk user, a divider shown only when collaborators exist, and the Clerk UserButton. components/editor/canvas/presence-cursors.tsx renders live cursors for all other participants using useOthers + useReactFlow's flowToScreenPosition + useViewport (for pan/zoom reactivity); each cursor is a colored SVG pointer with a name badge. canvas-editor.tsx wires useMyPresence to broadcast cursor position on onMouseMove (screenToFlowPosition) and clear on onMouseLeave; renders PresenceCursors and CollaboratorAvatars inside the canvas wrapper. Editor home navbar is unchanged. `npm run build` passes clean.
+- Feature 20: AI Sidebar Shell — components/editor/ai-sidebar.tsx created as a standalone component; preserves the existing floating slide-in behavior (fixed position, inset-y-3 right-3, translate-x animation) from editor-workspace-client.tsx. Header with Bot icon, "AI Workspace" title, "Collaborate with Ghost AI" subtitle, and X close button. Two tabs (base-ui Tabs) — AI Architect and Specs — with data-active:bg-accent-ai active styling. AI Architect tab: scrollable empty state with bot icon, description, and three starter prompt chips (bg-bg-subtle/text-accent-ai-text pills); message thread renders user messages right-aligned (bg-accent-primary-dim, border-accent-primary/50) and assistant messages left-aligned (bg-bg-elevated, border-border-subtle); auto-resizing textarea (72px–160px) with Enter-to-send and Shift+Enter newline; Send button bg-accent-ai. Specs tab: Generate Spec button (bg-accent-ai), static demo spec card (bg-bg-elevated, border-border-subtle) with FileText icon, title, snippet, and disabled Download button. editor-workspace-client.tsx updated to import AiSidebar, removing the inline aside and unused imports. `npm run build` passes clean.
+- Feature 21: Canvas Autosave — @vercel/blob installed. prisma/models/project.prisma: canvasJsonPath renamed to canvasBlobUrl; migration applied and Prisma client regenerated. app/api/projects/[projectId]/canvas/route.ts: GET fetches the project's canvasBlobUrl from Prisma then fetches and returns the canvas JSON from Vercel Blob; PUT uploads canvas JSON to Vercel Blob (canvas/{projectId}.json, no random suffix) and stores the returned URL on the project record. hooks/use-canvas-autosave.ts: watches nodes/edges, skips the initial mount render, debounces 2s, PUTs to the canvas route, tracks saving/saved/error status. canvas-editor.tsx: accepts projectId prop; on mount loads saved canvas if Liveblocks room is empty (skips if room already has nodes or edges); wires useCanvasAutosave; renders SaveStatusIndicator (bottom-center floating pill, idle is hidden). canvas-room.tsx and editor-workspace-client.tsx thread projectId through. `npm run build` passes clean.
 
 ## In Progress
 
 - None.
 
 ## Next Up
-- Feature 19 (TBD)
+- Feature 22 (TBD)
 
 ## Open Questions
 
@@ -54,5 +57,6 @@ Update this file whenever the current phase, active feature, or implementation s
 - lucide-react ^1.11.0 installed as a direct dependency.
 - @clerk/nextjs ^7.2.7 and @clerk/ui ^1.6.7 installed.
 - @liveblocks/node installed alongside existing @liveblocks/client, @liveblocks/react, @liveblocks/react-flow, @liveblocks/react-ui. Liveblocks client uses lazy init (getLiveblocks()) to avoid key validation errors at build time.
+- @vercel/blob ^2.3.3 installed. BLOB_READ_WRITE_TOKEN set in .env.local.
 - Prisma 7.8.0 — generated client goes to app/generated/prisma/; import PrismaClient from @/app/generated/prisma/client (no index.ts in v7). Constructor always requires { adapter } argument. @prisma/adapter-pg used for all connections.
 - prisma.config.ts uses schema: "prisma/" (multi-file schema) and reads DATABASE_URL from .env via dotenv.
