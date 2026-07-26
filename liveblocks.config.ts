@@ -1,4 +1,4 @@
-import type { LiveMap } from "@liveblocks/client"
+import type { LiveMap, LiveObject } from "@liveblocks/client"
 import type { LiveblocksNode, LiveblocksEdge } from "@liveblocks/react-flow"
 import type { CanvasNode, CanvasEdge } from "@/types/canvas"
 
@@ -10,8 +10,10 @@ declare global {
     };
 
     Storage: {
-      nodes: LiveMap<string, LiveblocksNode<CanvasNode>>;
-      edges: LiveMap<string, LiveblocksEdge<CanvasEdge>>;
+      flow: LiveObject<{
+        nodes: LiveMap<string, LiveblocksNode<CanvasNode>>;
+        edges: LiveMap<string, LiveblocksEdge<CanvasEdge>>;
+      }>;
     };
 
     UserMeta: {

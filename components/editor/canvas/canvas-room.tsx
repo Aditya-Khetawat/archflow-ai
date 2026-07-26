@@ -16,7 +16,9 @@ export function CanvasRoom({ roomId }: CanvasRoomProps) {
         <RoomProvider
           id={roomId}
           initialPresence={{ cursor: null, isThinking: false }}
-          initialStorage={new LiveObject({ nodes: new LiveMap(), edges: new LiveMap() })}
+          initialStorage={new LiveObject({
+            flow: new LiveObject({ nodes: new LiveMap(), edges: new LiveMap() }),
+          })}
         >
           <ClientSideSuspense fallback={<CanvasLoading />}>
             <ReactFlowProvider>
