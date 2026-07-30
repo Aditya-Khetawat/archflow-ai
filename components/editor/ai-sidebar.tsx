@@ -21,7 +21,9 @@ import {
   useCreateFeedMessage,
   useSelf,
   useStorage,
+  useMutation,
 } from "@liveblocks/react"
+import { LiveObject } from "@liveblocks/client"
 import { useRealtimeRun } from "@trigger.dev/react-hooks"
 import { AiStatusFeedMessageSchema, ChatFeedMessageSchema } from "@/types/tasks"
 import { cn } from "@/lib/utils"
@@ -74,11 +76,13 @@ function RunTracker({ runId, publicToken, onTerminal }: RunTrackerProps) {
   const firedRef = useRef(false)
 
   useEffect(() => {
-    if (!run || firedRef.current) return
+    if (!run) return
+    console.log(`[Frontend] Task status for ${runId}: ${run.status}`)
+    if (firedRef.current) return
     if (!(TERMINAL_STATUSES as readonly string[]).includes(run.status)) return
     firedRef.current = true
     onTerminal(run.status, run.output)
-  }, [run?.status, run?.id, onTerminal])
+  }, [run?.status, run?.id, onTerminal, runId])
 
   return null
 }
@@ -112,6 +116,17 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const chatScrollRef = useRef<HTMLDivElement>(null)
+
+  const safetyTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const specSafetyTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Clear timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current)
+      if (specSafetyTimeoutRef.current) clearTimeout(specSafetyTimeoutRef.current)
+    }
+  }, [])
 
   // Spec state
   const [specs, setSpecs] = useState<SpecItem[]>([])
@@ -166,16 +181,31 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
 
   const handleSpecRunTerminal = useCallback(
     (status: string) => {
+      console.log("[Frontend] Spec run tracker status updated:", status)
+      if (specSafetyTimeoutRef.current) {
+        clearTimeout(specSafetyTimeoutRef.current)
+        specSafetyTimeoutRef.current = null
+      }
+
       setIsSpecGenerating(false)
       setSpecRunId(null)
       setSpecPublicToken(null)
-      if (status === "COMPLETED") fetchSpecs()
+      if (status === "COMPLETED") {
+        console.log("[Frontend] Spec successfully generated and rendered")
+        fetchSpecs()
+      }
     },
     [fetchSpecs]
   )
 
   const handleRunTerminal = useCallback(
     (status: string, output: unknown) => {
+      console.log("[Frontend] Run tracker status updated:", status)
+      if (safetyTimeoutRef.current) {
+        clearTimeout(safetyTimeoutRef.current)
+        safetyTimeoutRef.current = null
+      }
+
       const isSuccess = status === "COMPLETED"
       const typedOutput = output as { summary?: string } | undefined
       const content = isSuccess
@@ -199,9 +229,81 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       setRunId(null)
       setPublicToken(null)
       updateMyPresence({ thinking: false })
+
+      if (isSuccess) {
+        console.log("[Frontend] Diagram rendered")
+      }
     },
     [createFeedMessage, updateMyPresence]
   )
+
+  const applyFallbackGraph = useMutation(({ storage }) => {
+    console.log("[Frontend] Writing fallback minimal graph directly to Liveblocks storage...")
+    const flow = storage.get("flow") as any
+    if (!flow) return
+    const nodes = flow.get("nodes")
+    const edges = flow.get("edges")
+    if (!nodes || !edges) return
+
+    // Clear any existing nodes/edges to ensure clean render
+    const nodeKeys: string[] = [];
+    nodes.forEach((_: any, key: string) => {
+      nodeKeys.push(key);
+    });
+    nodeKeys.forEach((key) => nodes.delete(key));
+
+    const edgeKeys: string[] = [];
+    edges.forEach((_: any, key: string) => {
+      edgeKeys.push(key);
+    });
+    edgeKeys.forEach((key) => edges.delete(key));
+
+    // Node 1: API Gateway
+    nodes.set(
+      "api-gateway",
+      new LiveObject({
+        id: "api-gateway",
+        type: "canvasNode",
+        position: { x: 100, y: 100 },
+        data: { label: "API Gateway", color: "#10233D", textColor: "#52A8FF", shape: "rectangle" },
+        width: 150,
+        height: 80,
+      } as any)
+    )
+
+    // Node 2: Database
+    nodes.set(
+      "database",
+      new LiveObject({
+        id: "database",
+        type: "canvasNode",
+        position: { x: 400, y: 100 },
+        data: { label: "Database", color: "#062822", textColor: "#0AC7B4", shape: "cylinder" },
+        width: 120,
+        height: 100,
+      } as any)
+    )
+
+    // Edge
+    edges.set(
+      "edge-api-db",
+      new LiveObject({
+        id: "edge-api-db",
+        type: "canvasEdge",
+        source: "api-gateway",
+        target: "database",
+        sourceHandle: null,
+        targetHandle: null,
+        data: { label: "Query" },
+        markerEnd: {
+          type: "arrowclosed",
+          color: "rgba(255,255,255,0.4)",
+          width: 16,
+          height: 16,
+        },
+      } as any)
+    )
+  }, [])
 
   // Latest validated feed message for the status strip fallback
   const latestFeedMessage = (() => {
@@ -224,6 +326,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
   const handleGenerateSpec = useCallback(async () => {
     if (isSpecGenerating) return
     setIsSpecGenerating(true)
+    console.log("[Frontend] Spec generation request started")
 
     const nodes = nodesArray ?? []
     const edges = edgesArray ?? []
@@ -240,6 +343,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       })
       if (!res.ok) throw new Error("Spec generation failed")
       const { runId: newSpecRunId } = (await res.json()) as { runId: string }
+      console.log("[Frontend] Spec task triggered, runId:", newSpecRunId)
 
       const tokenRes = await fetch("/api/ai/spec/token", {
         method: "POST",
@@ -249,9 +353,22 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       if (!tokenRes.ok) throw new Error("Token request failed")
       const { token } = (await tokenRes.json()) as { token: string }
 
+      if (specSafetyTimeoutRef.current) clearTimeout(specSafetyTimeoutRef.current)
+      specSafetyTimeoutRef.current = setTimeout(() => {
+        console.warn("[Frontend] Safety timeout reached for spec generation run:", newSpecRunId)
+        setIsSpecGenerating(false)
+        setSpecRunId(null)
+        setSpecPublicToken(null)
+      }, 45000)
+
       setSpecRunId(newSpecRunId)
       setSpecPublicToken(token)
-    } catch {
+    } catch (err) {
+      console.error("[Frontend] Spec generation request failed:", err)
+      if (specSafetyTimeoutRef.current) {
+        clearTimeout(specSafetyTimeoutRef.current)
+        specSafetyTimeoutRef.current = null
+      }
       setIsSpecGenerating(false)
     }
   }, [isSpecGenerating, roomId, nodesArray, edgesArray, validatedChatMessages])
@@ -283,6 +400,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
     const text = input.trim()
     if (!text || isLoading) return
 
+    console.log("[Frontend] Request started")
     setInput("")
     setIsLoading(true)
     updateMyPresence({ thinking: true })
@@ -317,6 +435,29 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       if (!designRes.ok) throw new Error("Design request failed")
 
       const { runId: newRunId } = (await designRes.json()) as { runId: string }
+      console.log("[Frontend] Task triggered, runId:", newRunId)
+
+      // Handle Bypass Mode
+      if (newRunId === "bypass") {
+        console.log("[Frontend] Bypassing AI task tracker, diagram loaded directly")
+        createFeedMessage(CHAT_FEED_ID, {
+          sender: "ArchFlow AI",
+          role: "assistant",
+          content: "Bypassed AI call, loaded mock architecture directly.",
+          timestamp: new Date().toISOString(),
+        }).catch(() => {})
+
+        createFeedMessage(FEED_ID, {
+          text: "Mock architecture loaded successfully.",
+          status: "complete",
+        }).catch(() => {})
+
+        setIsLoading(false)
+        setStatusText("")
+        updateMyPresence({ thinking: false })
+        console.log("[Frontend] Diagram rendered")
+        return
+      }
 
       const tokenRes = await fetch("/api/ai/design/token", {
         method: "POST",
@@ -328,9 +469,46 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
 
       const { token } = (await tokenRes.json()) as { token: string }
 
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current)
+      safetyTimeoutRef.current = setTimeout(() => {
+        console.warn("[Frontend] Safety timeout reached for design agent run:", newRunId, "- Clearing loading state and rendering fallback minimal graph.")
+        
+        // Render fallback minimal graph directly on timeout
+        try {
+          applyFallbackGraph()
+        } catch (fallbackErr) {
+          console.error("[Frontend] Failed to write fallback graph:", fallbackErr)
+        }
+
+        createFeedMessage(CHAT_FEED_ID, {
+          sender: "ArchFlow AI",
+          role: "assistant",
+          content: "ArchFlow AI request timed out. A default starter diagram has been loaded on the canvas.",
+          timestamp: new Date().toISOString(),
+        }).catch(() => {})
+
+        createFeedMessage(FEED_ID, {
+          text: "ArchFlow AI request timed out. Rendered fallback graph.",
+          status: "complete",
+        }).catch(() => {})
+
+        setIsLoading(false)
+        setStatusText("")
+        setRunId(null)
+        setPublicToken(null)
+        updateMyPresence({ thinking: false })
+        console.log("[Frontend] Diagram rendered")
+      }, 45000)
+
       setRunId(newRunId)
       setPublicToken(token)
-    } catch {
+    } catch (err) {
+      console.error("[Frontend] Request failed:", err)
+      if (safetyTimeoutRef.current) {
+        clearTimeout(safetyTimeoutRef.current)
+        safetyTimeoutRef.current = null
+      }
+
       createFeedMessage(CHAT_FEED_ID, {
         sender: "ArchFlow AI",
         role: "assistant",
@@ -347,7 +525,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       setStatusText("")
       updateMyPresence({ thinking: false })
     }
-  }, [input, isLoading, roomId, projectId, updateMyPresence, createFeedMessage, self])
+  }, [input, isLoading, roomId, projectId, updateMyPresence, createFeedMessage, self, applyFallbackGraph])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

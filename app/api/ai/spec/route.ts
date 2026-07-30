@@ -4,8 +4,12 @@ import { getCurrentProjectIdentity, getAccessibleProject } from "@/lib/project-a
 import type { generateSpec } from "@/trigger/generate-spec"
 
 export async function POST(request: Request) {
+  console.log("[Backend] Request received for spec generation");
   const identity = await getCurrentProjectIdentity()
-  if (!identity.userId) return Response.json({ error: "Unauthorized" }, { status: 401 })
+  if (!identity.userId) {
+    console.warn("[Backend] Unauthorized spec generation request");
+    return Response.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
   const body: unknown = await request.json().catch(() => ({}))
   const b = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {}
@@ -16,14 +20,17 @@ export async function POST(request: Request) {
   const edges = Array.isArray(b.edges) ? b.edges : []
 
   if (!roomId) {
+    console.warn("[Backend] Missing roomId in spec generation request");
     return Response.json({ error: "Missing roomId" }, { status: 400 })
   }
 
   const project = await getAccessibleProject(roomId, identity)
   if (!project) {
+    console.warn("[Backend] Project not found or inaccessible for roomId:", roomId);
     return Response.json({ error: "Not found" }, { status: 404 })
   }
 
+  console.log("[Backend] Triggering generate-spec task...");
   const handle = await tasks.trigger<typeof generateSpec>("generate-spec", {
     projectId: project.id,
     roomId,
@@ -31,6 +38,7 @@ export async function POST(request: Request) {
     nodes,
     edges,
   })
+  console.log("[Backend] Task triggered successfully, runId:", handle.id);
 
   await prisma.taskRun.create({
     data: { runId: handle.id, projectId: project.id, userId: identity.userId },

@@ -1,9 +1,10 @@
 import { schemaTask, metadata, logger } from "@trigger.dev/sdk/v3"
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
 import { generateText } from "ai"
 import { z } from "zod"
 import { put } from "@vercel/blob"
 import { prisma } from "@/lib/prisma"
+import { google, GEMINI_MODEL, withRetry, initializeGemini } from "@/lib/gemini"
+
 
 const chatMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -98,26 +99,36 @@ export const generateSpec = schemaTask({
   schema: payloadSchema,
   retry: { maxAttempts: 2, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
   run: async (payload) => {
-    const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_AI_API_KEY })
-
+    await initializeGemini(true)
     metadata.set("status", "starting")
     logger.info("Generating spec", {
       projectId: payload.projectId,
       nodeCount: payload.nodes.length,
       edgeCount: payload.edges.length,
     })
+    console.log("[Backend] Request received for spec generation", {
+      projectId: payload.projectId,
+      roomId: payload.roomId,
+    })
 
     metadata.set("status", "generating")
 
     const context = buildContext(payload.nodes, payload.edges, payload.chatHistory)
+    console.log("[Backend] Prompt built", { contextLength: context.length })
 
-    const result = await generateText({
-      model: google("gemini-2.5-flash"),
-      system: SYSTEM_PROMPT,
-      prompt: context,
+    console.log(`[Gemini] Request sent using model: ${GEMINI_MODEL}`)
+    const result = await withRetry(async () => {
+      return await generateText({
+        model: google(GEMINI_MODEL),
+        system: SYSTEM_PROMPT,
+        prompt: context,
+        abortSignal: AbortSignal.timeout(30000), // 30 second timeout
+      })
     })
+    console.log("[Gemini] Response received")
 
     const spec = result.text
+    console.log("[Backend] Spec successfully generated", { length: spec.length })
 
     metadata.set("status", "uploading")
 
