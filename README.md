@@ -84,7 +84,7 @@ npm install
 Apply migrations and compile the Prisma client:
 ```bash
 npx prisma db push
-npx prisma generate
+npx prisma db push
 ```
 
 ### 3. Run Trigger.dev Development Environment
@@ -101,6 +101,7 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000) in your browser to view the application.
 
 ---
+
 
 ## Project Structure
 
