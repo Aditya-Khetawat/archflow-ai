@@ -16,20 +16,14 @@ import {
 import {
   useEventListener,
   useUpdateMyPresence,
-  useFeedMessages,
-  useCreateFeed,
-  useCreateFeedMessage,
   useSelf,
   useStorage,
   useMutation,
 } from "@liveblocks/react"
 import { LiveObject } from "@liveblocks/client"
 import { useRealtimeRun } from "@trigger.dev/react-hooks"
-import { AiStatusFeedMessageSchema, ChatFeedMessageSchema } from "@/types/tasks"
 import { cn } from "@/lib/utils"
 
-const FEED_ID = "ai-status-feed"
-const CHAT_FEED_ID = "ai-chat"
 
 const TERMINAL_STATUSES = [
   "COMPLETED",
@@ -152,17 +146,25 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
 
   const self = useSelf()
   const updateMyPresence = useUpdateMyPresence()
-  const createFeed = useCreateFeed()
-  const createFeedMessage = useCreateFeedMessage()
-  const { messages: feedMessages } = useFeedMessages(FEED_ID)
-  const { messages: chatFeedMessages } = useFeedMessages(CHAT_FEED_ID)
 
-  // Ensure both feeds exist on mount
-  useEffect(() => {
-    createFeed(FEED_ID).catch(() => {})
-    createFeed(CHAT_FEED_ID).catch(() => {})
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Chat messages stored in room Storage (LiveMap) — keyed by UUID, sorted by createdAt.
+  // This replaces the broken Liveblocks Feed approach which silently dropped messages
+  // because GlobalRoomContext is never registered in this codebase.
+  const chatStorage = useStorage((root) => {
+    const m = root.chat
+    if (!m) return []
+    return Object.entries(m).map(([key, value]) => ({ id: key, ...value }))
+  })
+
+  const addChatMessage = useMutation(
+    ({ storage }, msg: { sender: string; role: "user" | "assistant"; content: string }) => {
+      const chat = storage.get("chat")
+      if (!chat) return
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      chat.set(id, { ...msg, createdAt: Date.now() })
+    },
+    []
+  )
 
   const fetchSpecs = useCallback(() => {
     setSpecsLoading(true)
@@ -212,17 +214,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         ? (typedOutput?.summary ?? "Design applied to canvas.")
         : "ArchFlow AI encountered an error. Please try again."
 
-      createFeedMessage(CHAT_FEED_ID, {
-        sender: "ArchFlow AI",
-        role: "assistant",
-        content,
-        timestamp: new Date().toISOString(),
-      }).catch(() => {})
-
-      createFeedMessage(FEED_ID, {
-        text: content,
-        status: isSuccess ? "complete" : "error",
-      }).catch(() => {})
+      addChatMessage({ sender: "ArchFlow AI", role: "assistant", content })
 
       setIsLoading(false)
       setStatusText("")
@@ -234,7 +226,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         console.log("[Frontend] Diagram rendered")
       }
     },
-    [createFeedMessage, updateMyPresence]
+    [addChatMessage, updateMyPresence]
   )
 
   const applyFallbackGraph = useMutation(({ storage }) => {
@@ -305,23 +297,13 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
     )
   }, [])
 
-  // Latest validated feed message for the status strip fallback
-  const latestFeedMessage = (() => {
-    if (!feedMessages?.length) return null
-    const sorted = [...feedMessages].sort((a, b) => b.createdAt - a.createdAt)
-    const parsed = AiStatusFeedMessageSchema.safeParse(sorted[0].data)
-    return parsed.success ? parsed.data : null
-  })()
+  // Chat messages from room Storage, sorted chronologically.
+  const validatedChatMessages = [...(chatStorage ?? [])].sort(
+    (a, b) => a.createdAt - b.createdAt
+  )
 
-  // Validated chat messages from the ai-chat feed, in chronological order
-  const validatedChatMessages = (chatFeedMessages ?? [])
-    .map((msg) => {
-      const parsed = ChatFeedMessageSchema.safeParse(msg.data)
-      if (!parsed.success) return null
-      return { id: msg.id, createdAt: msg.createdAt, ...parsed.data }
-    })
-    .filter((msg): msg is NonNullable<typeof msg> => msg !== null)
-    .sort((a, b) => a.createdAt - b.createdAt)
+  // latestFeedMessage no longer used (status feed removed); kept as null for safety.
+  const latestFeedMessage = null
 
   const handleGenerateSpec = useCallback(async () => {
     if (isSpecGenerating) return
@@ -409,19 +391,8 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       textareaRef.current.style.height = "72px"
     }
 
-    // Push user message to shared ai-chat feed
-    createFeedMessage(CHAT_FEED_ID, {
-      sender: self?.info?.name ?? "Unknown",
-      role: "user",
-      content: text,
-      timestamp: new Date().toISOString(),
-    }).catch(() => {})
-
-    // Write initial status to ai-status-feed
-    createFeedMessage(FEED_ID, {
-      text: "ArchFlow AI is analyzing your request…",
-      status: "start",
-    }).catch(() => {})
+    // Push user message to shared room storage chat
+    addChatMessage({ sender: self?.info?.name ?? "Unknown", role: "user", content: text })
 
     setStatusText("ArchFlow AI is analyzing your request…")
 
@@ -440,17 +411,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       // Handle Bypass Mode
       if (newRunId === "bypass") {
         console.log("[Frontend] Bypassing AI task tracker, diagram loaded directly")
-        createFeedMessage(CHAT_FEED_ID, {
-          sender: "ArchFlow AI",
-          role: "assistant",
-          content: "Bypassed AI call, loaded mock architecture directly.",
-          timestamp: new Date().toISOString(),
-        }).catch(() => {})
-
-        createFeedMessage(FEED_ID, {
-          text: "Mock architecture loaded successfully.",
-          status: "complete",
-        }).catch(() => {})
+        addChatMessage({ sender: "ArchFlow AI", role: "assistant", content: "Bypassed AI call, loaded mock architecture directly." })
 
         setIsLoading(false)
         setStatusText("")
@@ -480,17 +441,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
           console.error("[Frontend] Failed to write fallback graph:", fallbackErr)
         }
 
-        createFeedMessage(CHAT_FEED_ID, {
-          sender: "ArchFlow AI",
-          role: "assistant",
-          content: "ArchFlow AI request timed out. A default starter diagram has been loaded on the canvas.",
-          timestamp: new Date().toISOString(),
-        }).catch(() => {})
-
-        createFeedMessage(FEED_ID, {
-          text: "ArchFlow AI request timed out. Rendered fallback graph.",
-          status: "complete",
-        }).catch(() => {})
+        addChatMessage({ sender: "ArchFlow AI", role: "assistant", content: "ArchFlow AI request timed out. A default starter diagram has been loaded on the canvas." })
 
         setIsLoading(false)
         setStatusText("")
@@ -509,23 +460,13 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         safetyTimeoutRef.current = null
       }
 
-      createFeedMessage(CHAT_FEED_ID, {
-        sender: "ArchFlow AI",
-        role: "assistant",
-        content: "Failed to reach ArchFlow AI. Please try again.",
-        timestamp: new Date().toISOString(),
-      }).catch(() => {})
-
-      createFeedMessage(FEED_ID, {
-        text: "ArchFlow AI encountered an error.",
-        status: "error",
-      }).catch(() => {})
+      addChatMessage({ sender: "ArchFlow AI", role: "assistant", content: "Failed to reach ArchFlow AI. Please try again." })
 
       setIsLoading(false)
       setStatusText("")
       updateMyPresence({ thinking: false })
     }
-  }, [input, isLoading, roomId, projectId, updateMyPresence, createFeedMessage, self, applyFallbackGraph])
+  }, [input, isLoading, roomId, projectId, updateMyPresence, addChatMessage, self, applyFallbackGraph])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -560,12 +501,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
     setChatError(null)
 
     try {
-      await createFeedMessage(CHAT_FEED_ID, {
-        sender: self?.info?.name ?? "Unknown",
-        role: "user",
-        content: text,
-        timestamp: new Date().toISOString(),
-      })
+      addChatMessage({ sender: self?.info?.name ?? "Unknown", role: "user", content: text })
       setChatInput("")
       if (chatTextareaRef.current) {
         chatTextareaRef.current.style.height = "72px"
@@ -573,7 +509,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
     } catch {
       setChatError("Failed to send message. Please try again.")
     }
-  }, [chatInput, createFeedMessage, self])
+  }, [chatInput, addChatMessage, self])
 
   const handleChatKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -624,7 +560,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
     setSpecContent(null)
   }, [])
 
-  const activeStatusText = statusText || (isLoading ? latestFeedMessage?.text ?? "" : "")
+  const activeStatusText = statusText || (isLoading ? (latestFeedMessage as { text?: string } | null)?.text ?? "" : "")
 
   return (
     <>

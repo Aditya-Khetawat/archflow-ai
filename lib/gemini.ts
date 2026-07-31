@@ -114,12 +114,10 @@ function isTransientError(
  * Executes a Gemini generation function with automatic model fallback on
  * HTTP 429 quota / rate-limit errors.
  *
- * Algorithm for each model in GEMINI_FALLBACK_MODELS:
- *   1. Call fn(model).
- *   2. On 429 (attempt 1): read Google's suggested retry delay, wait, retry once.
- *   3. On 429 (attempt 2): advance to the next model.
- *   4. On other transient errors (500, 503, timeout): advance to the next model immediately.
- *   5. On non-transient errors: throw immediately — no fallback will help.
+ * Each model is tried exactly once. On any rate-limit (429) or other
+ * transient error, the function immediately advances to the next model in
+ * GEMINI_FALLBACK_MODELS without waiting. On non-transient errors the
+ * function throws immediately — no fallback will help.
  *
  * @param fn    A factory that receives the resolved model name and returns a Promise.
  * @param label Short label used in log messages (e.g. "generate-spec").
@@ -133,57 +131,40 @@ export async function withGeminiFallback<T>(
     const nextModel = GEMINI_FALLBACK_MODELS[mi + 1];
 
     console.log(
-      `[Gemini:${label}] Attempt with model ${mi + 1}/${GEMINI_FALLBACK_MODELS.length}: ${model}`
+      `[Gemini:${label}] Trying model ${mi + 1}/${GEMINI_FALLBACK_MODELS.length}: ${model}`
     );
 
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const result = await fn(model);
-        if (mi > 0 || attempt > 1) {
-          console.log(
-            `[Gemini:${label}] SUCCESS — model: ${model}, model attempt: ${mi + 1}, request attempt: ${attempt}`
-          );
-        }
-        return result;
-      } catch (err: any) {
-        const status: number | undefined = err?.status || err?.statusCode;
-        const message: string = err?.message || String(err);
-        const rateLimit = isRateLimitError(status, message);
-        const transient = isTransientError(status, message, err?.name);
-
-        if (!transient) {
-          // Permanent error — no model switch will help
-          console.error(
-            `[Gemini:${label}] Non-transient error on ${model}: ${message.slice(0, 200)}`
-          );
-          throw err;
-        }
-
-        if (rateLimit && attempt === 1) {
-          // First 429 on this model: wait the suggested delay and retry once
-          const delayMs = computeRateLimitDelay(err, message);
-          console.warn(
-            `[Gemini:${label}] Rate limit on ${model} (attempt 1). ` +
-            `Waiting ${Math.round(delayMs / 1000)}s before retry same model...`
-          );
-          await new Promise((r) => setTimeout(r, delayMs));
-          // continue inner loop → attempt 2
-        } else {
-          // Either: 429 persists after retry, or other transient error
-          if (rateLimit) {
-            console.warn(
-              `[Gemini:${label}] Rate limit on ${model} persists after retry. ` +
-              (nextModel ? `Falling back to ${nextModel}...` : "All models exhausted.")
-            );
-          } else {
-            console.warn(
-              `[Gemini:${label}] Transient error on ${model}: ${message.slice(0, 150)}. ` +
-              (nextModel ? `Falling back to ${nextModel}...` : "All models exhausted.")
-            );
-          }
-          break; // advance to next model
-        }
+    try {
+      const result = await fn(model);
+      if (mi > 0) {
+        console.log(`[Gemini:${label}] SUCCESS — model: ${model} (fallback #${mi + 1})`);
       }
+      return result;
+    } catch (err: any) {
+      const status: number | undefined = err?.status || err?.statusCode;
+      const message: string = err?.message || String(err);
+      const rateLimit = isRateLimitError(status, message);
+      const transient = isTransientError(status, message, err?.name);
+
+      if (!transient) {
+        console.error(
+          `[Gemini:${label}] Non-transient error on ${model}: ${message.slice(0, 200)}`
+        );
+        throw err;
+      }
+
+      if (rateLimit) {
+        console.warn(
+          `[Gemini:${label}] Rate limit on ${model}. ` +
+          (nextModel ? `Falling back to ${nextModel} immediately...` : "All models exhausted.")
+        );
+      } else {
+        console.warn(
+          `[Gemini:${label}] Transient error on ${model}: ${message.slice(0, 150)}. ` +
+          (nextModel ? `Falling back to ${nextModel}...` : "All models exhausted.")
+        );
+      }
+      // advance to next model — no wait
     }
   }
 

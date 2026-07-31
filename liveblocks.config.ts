@@ -14,6 +14,12 @@ declare global {
         nodes: LiveMap<string, LiveblocksNode<CanvasNode>>;
         edges: LiveMap<string, LiveblocksEdge<CanvasEdge>>;
       }>;
+      chat: LiveMap<string, {
+        sender: string;
+        role: "user" | "assistant";
+        content: string;
+        createdAt: number; // ms since epoch
+      }>;
     };
 
     UserMeta: {
