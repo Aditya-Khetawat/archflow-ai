@@ -155,7 +155,7 @@ type ToolCall = { toolName: ToolName; input: Record<string, unknown> };
 
 export const designAgent = task({
   id: "design-agent",
-  retry: { maxAttempts: 2 },
+  retry: { maxAttempts: 1 }, // Trigger.dev retry disabled — withRetry() handles retries with correct delay
   run: async (payload: { prompt: string; roomId: string; userId: string }) => {
     console.log("[Backend] Request received", { roomId: payload.roomId, prompt: payload.prompt });
     await initializeGemini(false); // Skip health check to avoid rate limit/quota errors on init
@@ -205,14 +205,25 @@ export const designAgent = task({
 
       console.log(`[Gemini] Request sent using model: ${GEMINI_MODEL}`);
       const result = await withRetry(async () => {
-        return await generateText({
-          model: google(GEMINI_MODEL),
-          system: buildSystemPrompt(),
-          prompt: `User request: ${payload.prompt}\n\n${canvasContext}`,
-          tools: canvasTools,
-          toolChoice: "required",
-          abortSignal: AbortSignal.timeout(30000), // 30 second timeout
-        });
+        const tsRequest = new Date().toISOString()
+        console.log(`[GEMINI_TIMELINE] design-agent REQUEST sent | model: ${GEMINI_MODEL} | ts: ${tsRequest}`)
+        try {
+          const r = await generateText({
+            model: google(GEMINI_MODEL),
+            system: buildSystemPrompt(),
+            prompt: `User request: ${payload.prompt}\n\n${canvasContext}`,
+            tools: canvasTools,
+            toolChoice: "required",
+            abortSignal: AbortSignal.timeout(30000), // 30 second timeout
+          });
+          const tsResponse = new Date().toISOString()
+          console.log(`[GEMINI_TIMELINE] design-agent RESPONSE received | ts: ${tsResponse}`)
+          return r
+        } catch (innerErr: any) {
+          const tsFailure = new Date().toISOString()
+          console.error(`[GEMINI_TIMELINE] design-agent REQUEST FAILED | ts: ${tsFailure} | status: ${innerErr?.status} | msg: ${String(innerErr?.message).slice(0, 200)}`)
+          throw innerErr
+        }
       });
       console.log("[Gemini] Response received");
 

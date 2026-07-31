@@ -97,7 +97,7 @@ Write in clear, professional technical language. Use Markdown headers, bullet po
 export const generateSpec = schemaTask({
   id: "generate-spec",
   schema: payloadSchema,
-  retry: { maxAttempts: 2, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
+  retry: { maxAttempts: 1 }, // Trigger.dev retry disabled — withRetry() handles retries with correct delay
   run: async (payload) => {
     try {
       logger.info("=== generate-spec task started ===", {
@@ -128,12 +128,27 @@ export const generateSpec = schemaTask({
       let spec: string
       try {
         const result = await withRetry(async () => {
-          return await generateText({
-            model: google(GEMINI_MODEL),
-            system: SYSTEM_PROMPT,
-            prompt: context,
-            abortSignal: AbortSignal.timeout(60000),
-          })
+          const tsRequest = new Date().toISOString()
+          logger.info(`[GEMINI_TIMELINE] generate-spec REQUEST sent`, { model: GEMINI_MODEL, timestamp: tsRequest })
+          try {
+            const r = await generateText({
+              model: google(GEMINI_MODEL),
+              system: SYSTEM_PROMPT,
+              prompt: context,
+              abortSignal: AbortSignal.timeout(60000),
+            })
+            const tsResponse = new Date().toISOString()
+            logger.info(`[GEMINI_TIMELINE] generate-spec RESPONSE received`, { timestamp: tsResponse, textLength: r.text.length })
+            return r
+          } catch (innerErr: any) {
+            const tsFailure = new Date().toISOString()
+            logger.error(`[GEMINI_TIMELINE] generate-spec REQUEST FAILED`, {
+              timestamp: tsFailure,
+              status: innerErr?.status,
+              error: innerErr?.message?.slice(0, 200),
+            })
+            throw innerErr
+          }
         }, { maxRetries: 1 })
         spec = result.text
         logger.info("Step 3: Gemini response received", { specLength: spec.length })
