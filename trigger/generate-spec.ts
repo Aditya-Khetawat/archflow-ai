@@ -99,7 +99,7 @@ export const generateSpec = schemaTask({
   schema: payloadSchema,
   retry: { maxAttempts: 2, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
   run: async (payload) => {
-    await initializeGemini(true)
+    await initializeGemini(false) // skip health check — saves ~10s per run
     metadata.set("status", "starting")
     logger.info("Generating spec", {
       projectId: payload.projectId,
@@ -122,9 +122,9 @@ export const generateSpec = schemaTask({
         model: google(GEMINI_MODEL),
         system: SYSTEM_PROMPT,
         prompt: context,
-        abortSignal: AbortSignal.timeout(30000), // 30 second timeout
+        abortSignal: AbortSignal.timeout(60000), // 60 second timeout
       })
-    })
+    }, { maxRetries: 1 })
     console.log("[Gemini] Response received")
 
     const spec = result.text

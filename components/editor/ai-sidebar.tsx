@@ -359,7 +359,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         setIsSpecGenerating(false)
         setSpecRunId(null)
         setSpecPublicToken(null)
-      }, 45000)
+      }, 120000)
 
       setSpecRunId(newSpecRunId)
       setSpecPublicToken(token)
