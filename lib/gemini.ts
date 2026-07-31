@@ -88,20 +88,30 @@ export async function initializeGemini(runHealthCheck = false): Promise<string> 
       throw new Error("No Gemini Flash models supporting generateContent were returned by the API.");
     }
   } else {
-    // Parse versions and sort descending to get the newest
-    flashModels.sort((a, b) => {
-      const getVersion = (name: string) => {
-        const match = name.match(/gemini-(\d+\.\d+|\d+)/i);
-        return match ? parseFloat(match[1]) : 0;
-      };
-      return getVersion(b.name) - getVersion(a.name);
-    });
-    selectedModelName = flashModels[0].name;
+    // Prioritize gemini-flash-latest for quota availability and compatibility
+    const preferredModel = flashModels.find((m) => m.name.toLowerCase().includes("gemini-flash-latest"));
+    if (preferredModel) {
+      selectedModelName = preferredModel.name;
+    } else {
+      const backupModel = flashModels.find((m) => m.name.toLowerCase().includes("gemini-1.5-flash"));
+      if (backupModel) {
+        selectedModelName = backupModel.name;
+      } else {
+        flashModels.sort((a, b) => {
+          const getVersion = (name: string) => {
+            const match = name.match(/gemini-(\d+\.\d+|\d+)/i);
+            return match ? parseFloat(match[1]) : 0;
+          };
+          return getVersion(b.name) - getVersion(a.name);
+        });
+        selectedModelName = flashModels[0].name;
+      }
+    }
   }
 
   // Strip "models/" prefix if present, as the SDK usually expects just "gemini-1.5-flash"
   GEMINI_MODEL = selectedModelName.replace(/^models\//, "");
-  console.log(`[Gemini] Automatically selected newest Flash model: ${GEMINI_MODEL}`);
+  console.log(`[Gemini] Selected model (preferred gemini-flash-latest if available): ${GEMINI_MODEL}`);
 
   if (runHealthCheck) {
     console.log(`[Gemini] Running health check on model "${GEMINI_MODEL}"...`);
