@@ -40,7 +40,15 @@ export function EditorWorkspaceClient({
   const handleSaveReady = useCallback((fn: () => void) => { saveFnRef.current = fn }, [])
 
   return (
-    <LiveblocksProvider authEndpoint="/api/liveblocks-auth">
+    <LiveblocksProvider authEndpoint={async (room) => {
+        const res = await fetch("/api/liveblocks-auth", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ room }),
+        });
+        return res.json();
+      }}>
       <RoomProvider
         id={roomId}
         initialPresence={{ cursor: null, thinking: false }}

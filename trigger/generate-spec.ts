@@ -99,62 +99,103 @@ export const generateSpec = schemaTask({
   schema: payloadSchema,
   retry: { maxAttempts: 2, minTimeoutInMs: 1000, maxTimeoutInMs: 10000, factor: 2 },
   run: async (payload) => {
-    await initializeGemini(false) // skip health check — saves ~10s per run
-    metadata.set("status", "starting")
-    logger.info("Generating spec", {
-      projectId: payload.projectId,
-      nodeCount: payload.nodes.length,
-      edgeCount: payload.edges.length,
-    })
-    console.log("[Backend] Request received for spec generation", {
-      projectId: payload.projectId,
-      roomId: payload.roomId,
-    })
-
-    metadata.set("status", "generating")
-
-    const context = buildContext(payload.nodes, payload.edges, payload.chatHistory)
-    console.log("[Backend] Prompt built", { contextLength: context.length })
-
-    console.log(`[Gemini] Request sent using model: ${GEMINI_MODEL}`)
-    const result = await withRetry(async () => {
-      return await generateText({
-        model: google(GEMINI_MODEL),
-        system: SYSTEM_PROMPT,
-        prompt: context,
-        abortSignal: AbortSignal.timeout(60000), // 60 second timeout
-      })
-    }, { maxRetries: 1 })
-    console.log("[Gemini] Response received")
-
-    const spec = result.text
-    console.log("[Backend] Spec successfully generated", { length: spec.length })
-
-    metadata.set("status", "uploading")
-
-    const blob = await put(
-      `specs/${payload.projectId}/${Date.now()}.md`,
-      spec,
-      {
-        access: "private",
-        contentType: "text/markdown",
-        addRandomSuffix: false,
-        allowOverwrite: true,
-      }
-    )
-
-    const record = await prisma.projectSpec.create({
-      data: {
+    try {
+      logger.info("=== generate-spec task started ===", {
         projectId: payload.projectId,
-        filePath: blob.url,
-      },
-    })
+        nodeCount: payload.nodes.length,
+        edgeCount: payload.edges.length,
+      })
 
-    metadata.set("status", "complete")
-    metadata.set("specLength", spec.length)
-    metadata.set("specId", record.id)
-    logger.info("Spec generated and saved", { length: spec.length, specId: record.id })
+      // Step 1: Init Gemini
+      logger.info("Step 1: Initializing Gemini...")
+      try {
+        await initializeGemini(false)
+        logger.info("Step 1: Gemini initialized OK, model:", { model: GEMINI_MODEL })
+      } catch (err: any) {
+        logger.error("Step 1 FAILED: Gemini init error", { error: err.message || String(err) })
+        throw err
+      }
 
-    return { spec, specId: record.id }
+      metadata.set("status", "generating")
+
+      // Step 2: Build context
+      logger.info("Step 2: Building context...")
+      const context = buildContext(payload.nodes, payload.edges, payload.chatHistory)
+      logger.info("Step 2: Context built", { contextLength: context.length })
+
+      // Step 3: Gemini call
+      logger.info(`Step 3: Calling Gemini model "${GEMINI_MODEL}"...`)
+      let spec: string
+      try {
+        const result = await withRetry(async () => {
+          return await generateText({
+            model: google(GEMINI_MODEL),
+            system: SYSTEM_PROMPT,
+            prompt: context,
+            abortSignal: AbortSignal.timeout(60000),
+          })
+        }, { maxRetries: 1 })
+        spec = result.text
+        logger.info("Step 3: Gemini response received", { specLength: spec.length })
+      } catch (err: any) {
+        logger.error("Step 3 FAILED: Gemini call error", {
+          error: err.message || String(err),
+          status: err?.status,
+          cause: err?.cause?.message,
+        })
+        throw err
+      }
+
+      metadata.set("status", "uploading")
+
+      // Step 4: Upload to Vercel Blob
+      logger.info("Step 4: Uploading spec to Vercel Blob...")
+      let blob: Awaited<ReturnType<typeof put>>
+      try {
+        blob = await put(
+          `specs/${payload.projectId}/${Date.now()}.md`,
+          spec,
+          {
+            access: "private",
+            contentType: "text/markdown",
+            addRandomSuffix: false,
+            allowOverwrite: true,
+          }
+        )
+        logger.info("Step 4: Blob uploaded OK", { url: blob.url })
+      } catch (err: any) {
+        logger.error("Step 4 FAILED: Blob upload error", { error: err.message || String(err) })
+        throw err
+      }
+
+      // Step 5: Save to DB
+      logger.info("Step 5: Saving spec record to DB...")
+      let record: { id: string }
+      try {
+        record = await prisma.projectSpec.create({
+          data: {
+            projectId: payload.projectId,
+            filePath: blob.url,
+          },
+        })
+        logger.info("Step 5: DB record created", { specId: record.id })
+      } catch (err: any) {
+        logger.error("Step 5 FAILED: DB write error", { error: err.message || String(err) })
+        throw err
+      }
+
+      metadata.set("status", "complete")
+      metadata.set("specLength", spec.length)
+      metadata.set("specId", record.id)
+      logger.info("=== generate-spec task COMPLETED ===", { specId: record.id })
+
+      return { spec, specId: record.id }
+    } catch (err: any) {
+      logger.error("=== generate-spec task FAILED ===", {
+        error: err.message || String(err),
+        stack: err.stack?.slice(0, 500),
+      })
+      throw err
+    }
   },
 })
