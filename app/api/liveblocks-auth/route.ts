@@ -26,11 +26,13 @@ export async function POST(request: Request) {
 
   const lb = getLiveblocks();
 
-  // Ensure the room exists and grant this user write access.
-  // Using usersAccesses so the room remains private by default but
-  // each authenticated project member gets full write access.
-  await lb.getOrCreateRoom(room, {
-    defaultAccesses: [],
+  // Ensure the room exists (private by default)
+  await lb.getOrCreateRoom(room, { defaultAccesses: [] });
+
+  // Explicitly grant this user write access on every auth request.
+  // Required for ID token auth — room permissions are enforced by Liveblocks
+  // server-side, not embedded in the token.
+  await lb.updateRoom(room, {
     usersAccesses: {
       [identity.userId]: ["room:write"],
     },
