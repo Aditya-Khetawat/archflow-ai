@@ -20,6 +20,12 @@ declare global {
         content: string;
         createdAt: number; // ms since epoch
       }>;
+      architect: LiveMap<string, {
+        sender: string;
+        role: "user" | "assistant";
+        content: string;
+        createdAt: number; // ms since epoch
+      }>;
     };
 
     UserMeta: {

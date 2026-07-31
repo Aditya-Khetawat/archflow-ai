@@ -166,6 +166,23 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
     []
   )
 
+  // Architect messages — separate storage key, never shared with Chat.
+  const architectStorage = useStorage((root) => {
+    const m = root.architect
+    if (!m) return []
+    return Object.entries(m).map(([key, value]) => ({ id: key, ...value }))
+  })
+
+  const addArchitectMessage = useMutation(
+    ({ storage }, msg: { sender: string; role: "user" | "assistant"; content: string }) => {
+      const architect = storage.get("architect")
+      if (!architect) return
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      architect.set(id, { ...msg, createdAt: Date.now() })
+    },
+    []
+  )
+
   const fetchSpecs = useCallback(() => {
     setSpecsLoading(true)
     fetch(`/api/projects/${projectId}/specs`)
@@ -214,7 +231,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         ? (typedOutput?.summary ?? "Design applied to canvas.")
         : "ArchFlow AI encountered an error. Please try again."
 
-      addChatMessage({ sender: "ArchFlow AI", role: "assistant", content })
+      addArchitectMessage({ sender: "ArchFlow AI", role: "assistant", content })
 
       setIsLoading(false)
       setStatusText("")
@@ -226,7 +243,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         console.log("[Frontend] Diagram rendered")
       }
     },
-    [addChatMessage, updateMyPresence]
+    [addArchitectMessage, updateMyPresence]
   )
 
   const applyFallbackGraph = useMutation(({ storage }) => {
@@ -297,8 +314,13 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
     )
   }, [])
 
-  // Chat messages from room Storage, sorted chronologically.
+  // Chat messages (Chat tab only), sorted chronologically.
   const validatedChatMessages = [...(chatStorage ?? [])].sort(
+    (a, b) => a.createdAt - b.createdAt
+  )
+
+  // Architect messages (AI Architect tab only), sorted chronologically.
+  const architectMessages = [...(architectStorage ?? [])].sort(
     (a, b) => a.createdAt - b.createdAt
   )
 
@@ -341,7 +363,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         setIsSpecGenerating(false)
         setSpecRunId(null)
         setSpecPublicToken(null)
-      }, 120000)
+      }, 300000) // 5-minute last-resort fallback — RunTracker terminates normally via onTerminal
 
       setSpecRunId(newSpecRunId)
       setSpecPublicToken(token)
@@ -369,7 +391,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight
     }
-  }, [validatedChatMessages.length])
+  }, [architectMessages.length, validatedChatMessages.length])
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
@@ -391,8 +413,8 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       textareaRef.current.style.height = "72px"
     }
 
-    // Push user message to shared room storage chat
-    addChatMessage({ sender: self?.info?.name ?? "Unknown", role: "user", content: text })
+    // Push user message to architect storage
+    addArchitectMessage({ sender: self?.info?.name ?? "Unknown", role: "user", content: text })
 
     setStatusText("ArchFlow AI is analyzing your request…")
 
@@ -411,7 +433,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       // Handle Bypass Mode
       if (newRunId === "bypass") {
         console.log("[Frontend] Bypassing AI task tracker, diagram loaded directly")
-        addChatMessage({ sender: "ArchFlow AI", role: "assistant", content: "Bypassed AI call, loaded mock architecture directly." })
+        addArchitectMessage({ sender: "ArchFlow AI", role: "assistant", content: "Bypassed AI call, loaded mock architecture directly." })
 
         setIsLoading(false)
         setStatusText("")
@@ -441,7 +463,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
           console.error("[Frontend] Failed to write fallback graph:", fallbackErr)
         }
 
-        addChatMessage({ sender: "ArchFlow AI", role: "assistant", content: "ArchFlow AI request timed out. A default starter diagram has been loaded on the canvas." })
+        addArchitectMessage({ sender: "ArchFlow AI", role: "assistant", content: "ArchFlow AI request timed out. A default starter diagram has been loaded on the canvas." })
 
         setIsLoading(false)
         setStatusText("")
@@ -460,13 +482,13 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         safetyTimeoutRef.current = null
       }
 
-      addChatMessage({ sender: "ArchFlow AI", role: "assistant", content: "Failed to reach ArchFlow AI. Please try again." })
+      addArchitectMessage({ sender: "ArchFlow AI", role: "assistant", content: "Failed to reach ArchFlow AI. Please try again." })
 
       setIsLoading(false)
       setStatusText("")
       updateMyPresence({ thinking: false })
     }
-  }, [input, isLoading, roomId, projectId, updateMyPresence, addChatMessage, self, applyFallbackGraph])
+  }, [input, isLoading, roomId, projectId, updateMyPresence, addArchitectMessage, self, applyFallbackGraph])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -641,7 +663,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
 
     <aside
       className={cn(
-        "fixed inset-y-3 right-3 top-15 z-40 hidden w-84 flex-col rounded-3xl border border-border-subtle bg-bg-surface/95 backdrop-blur-xl transition-transform duration-200 md:flex",
+        "fixed inset-y-3 right-3 top-15 z-40 hidden w-84 flex-col overflow-hidden rounded-3xl border border-border-subtle bg-bg-surface/95 backdrop-blur-xl transition-transform duration-200 md:flex",
         isOpen ? "translate-x-0" : "translate-x-[calc(100%+1rem)]"
       )}
     >
@@ -696,7 +718,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
           <div className="flex h-full flex-col">
             <ScrollArea className="flex-1" ref={scrollRef as React.Ref<HTMLDivElement>}>
               <div className="px-4 pt-3 pb-2">
-                {validatedChatMessages.length === 0 ? (
+                {architectMessages.length === 0 ? (
                   <div className="flex flex-col items-center gap-5 py-8 text-center">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-ai/15">
                       <Bot className="h-6 w-6 text-accent-ai-text" />
@@ -723,7 +745,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3 pb-2">
-                    {validatedChatMessages.map((msg) =>
+                    {architectMessages.map((msg) =>
                       msg.role === "assistant" ? (
                         <div key={msg.id} className="flex justify-start gap-2">
                           <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent-ai/15">
