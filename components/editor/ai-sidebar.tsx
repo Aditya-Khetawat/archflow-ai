@@ -498,7 +498,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
         setPublicToken(null)
         updateMyPresence({ thinking: false })
         console.log("[Frontend] Diagram rendered")
-      }, 45000)
+      }, 120000)
 
       setRunId(newRunId)
       setPublicToken(token)

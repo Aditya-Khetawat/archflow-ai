@@ -158,7 +158,7 @@ export const designAgent = task({
   retry: { maxAttempts: 2 },
   run: async (payload: { prompt: string; roomId: string; userId: string }) => {
     console.log("[Backend] Request received", { roomId: payload.roomId, prompt: payload.prompt });
-    await initializeGemini(true);
+    await initializeGemini(false); // Skip health check to avoid rate limit/quota errors on init
     const lb = getLiveblocks();
 
     await lb
