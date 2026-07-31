@@ -26,7 +26,15 @@ export async function POST(request: Request) {
 
   const lb = getLiveblocks();
 
-  await lb.getOrCreateRoom(room, { defaultAccesses: [] });
+  // Ensure the room exists and grant this user write access.
+  // Using usersAccesses so the room remains private by default but
+  // each authenticated project member gets full write access.
+  await lb.getOrCreateRoom(room, {
+    defaultAccesses: [],
+    usersAccesses: {
+      [identity.userId]: ["room:write"],
+    },
+  });
 
   const user = await currentUser();
   const name =
@@ -36,12 +44,13 @@ export async function POST(request: Request) {
   const avatar = user?.imageUrl ?? "";
   const color = getUserColor(identity.userId);
 
-  const session = lb.prepareSession(identity.userId, {
-    userInfo: { name, avatar, color },
-  });
+  // Use identifyUser (ID token) instead of prepareSession (access token).
+  // ID tokens are valid for ALL Liveblocks APIs including Feeds, Comments,
+  // Notifications — not just the specific room.
+  const { status, body } = await lb.identifyUser(
+    { userId: identity.userId, groupIds: [] },
+    { userInfo: { name, avatar, color } }
+  );
 
-  session.allow(room, session.FULL_ACCESS);
-
-  const { status, body } = await session.authorize();
   return new Response(body, { status });
 }
