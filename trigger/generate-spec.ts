@@ -3,7 +3,7 @@ import { generateText } from "ai"
 import { z } from "zod"
 import { put } from "@vercel/blob"
 import { prisma } from "@/lib/prisma"
-import { google, GEMINI_MODEL, withRetry, initializeGemini } from "@/lib/gemini"
+import { google, GEMINI_MODEL, withGeminiFallback, initializeGemini } from "@/lib/gemini"
 
 
 const chatMessageSchema = z.object({
@@ -123,33 +123,23 @@ export const generateSpec = schemaTask({
       const context = buildContext(payload.nodes, payload.edges, payload.chatHistory)
       logger.info("Step 2: Context built", { contextLength: context.length })
 
-      // Step 3: Gemini call
-      logger.info(`Step 3: Calling Gemini model "${GEMINI_MODEL}"...`)
+      // Step 3: Gemini call with automatic model fallback
+      logger.info(`Step 3: Calling Gemini (primary model: "${GEMINI_MODEL}")...`)
       let spec: string
       try {
-        const result = await withRetry(async () => {
+        const result = await withGeminiFallback(async (model) => {
           const tsRequest = new Date().toISOString()
-          logger.info(`[GEMINI_TIMELINE] generate-spec REQUEST sent`, { model: GEMINI_MODEL, timestamp: tsRequest })
-          try {
-            const r = await generateText({
-              model: google(GEMINI_MODEL),
-              system: SYSTEM_PROMPT,
-              prompt: context,
-              abortSignal: AbortSignal.timeout(60000),
-            })
-            const tsResponse = new Date().toISOString()
-            logger.info(`[GEMINI_TIMELINE] generate-spec RESPONSE received`, { timestamp: tsResponse, textLength: r.text.length })
-            return r
-          } catch (innerErr: any) {
-            const tsFailure = new Date().toISOString()
-            logger.error(`[GEMINI_TIMELINE] generate-spec REQUEST FAILED`, {
-              timestamp: tsFailure,
-              status: innerErr?.status,
-              error: innerErr?.message?.slice(0, 200),
-            })
-            throw innerErr
-          }
-        }, { maxRetries: 1 })
+          logger.info(`[GEMINI_TIMELINE] generate-spec REQUEST sent`, { model, timestamp: tsRequest })
+          const r = await generateText({
+            model: google(model),
+            system: SYSTEM_PROMPT,
+            prompt: context,
+            abortSignal: AbortSignal.timeout(60000),
+          })
+          const tsResponse = new Date().toISOString()
+          logger.info(`[GEMINI_TIMELINE] generate-spec RESPONSE received`, { model, timestamp: tsResponse, textLength: r.text.length })
+          return r
+        }, "generate-spec")
         spec = result.text
         logger.info("Step 3: Gemini response received", { specLength: spec.length })
       } catch (err: any) {

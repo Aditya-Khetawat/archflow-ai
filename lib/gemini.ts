@@ -16,155 +16,221 @@ export const google = createGoogleGenerativeAI({
 });
 
 /**
- * The Gemini model to use for all generation requests.
- * Hardcoded to gemini-flash-latest — the stable, high-quota alias for the
- * current recommended Flash model. No dynamic discovery needed.
+ * Priority-ordered list of Gemini models to attempt.
+ * withGeminiFallback() always starts from index 0 and advances on 429 failures.
  */
-export const GEMINI_MODEL = "gemini-flash-latest";
+export const GEMINI_FALLBACK_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash-lite",
+] as const;
 
 /**
- * No-op kept for call-site compatibility. Previously performed dynamic model
- * discovery; now simply logs the hardcoded model and returns immediately.
+ * Primary model alias — kept for logging and call-site compatibility.
+ * All actual generation goes through withGeminiFallback().
+ */
+export const GEMINI_MODEL = GEMINI_FALLBACK_MODELS[0];
+
+/**
+ * No-op kept for call-site compatibility.
  */
 export async function initializeGemini(_runHealthCheck = false): Promise<string> {
   if (!apiKey) {
     console.warn("[Gemini] No API key found in environment.");
   }
-  console.log(`[Gemini] Using model: ${GEMINI_MODEL}`);
+  console.log(`[Gemini] Primary model: ${GEMINI_MODEL}. Fallback chain: ${GEMINI_FALLBACK_MODELS.join(" → ")}`);
   return GEMINI_MODEL;
 }
 
-/**
- * Helper to fetch standard Retry-After header from various error formats.
- */
+// ─── Internal helpers ──────────────────────────────────────────────────────
+
 function getRetryAfterHeader(error: any): string | null {
   const headers = error?.headers || error?.response?.headers;
   if (!headers) return null;
-  
   if (typeof headers.get === "function") {
     return headers.get("retry-after") || headers.get("Retry-After") || null;
   }
-  
   return headers["retry-after"] || headers["Retry-After"] || null;
 }
 
-/**
- * Parses HTTP Retry-After header value (either seconds or an HTTP Date).
- */
 function parseRetryAfter(value: string | null): number | null {
   if (!value) return null;
-  
-  // If numeric (seconds), parse and convert to ms
-  if (/^\d+$/.test(value)) {
-    const seconds = parseInt(value, 10);
-    return seconds * 1000;
-  }
-  
-  // Try parsing as an HTTP date
+  if (/^\d+$/.test(value)) return parseInt(value, 10) * 1000;
   const ms = Date.parse(value);
   if (!isNaN(ms)) {
     const delay = ms - Date.now();
     return delay > 0 ? delay : 0;
   }
-  
   return null;
 }
 
-/**
- * Parses Google's custom error response messages for "retry in Xs" text.
- */
 function parseGoogleRetryMessage(message: string): number | null {
-  const retryMatch = message.match(/retry in (\d+(?:\.\d+)?)\s*(?:s|second)/i);
-  if (retryMatch) {
-    const seconds = parseFloat(retryMatch[1]);
-    return seconds * 1000;
-  }
-  return null;
+  const m = message.match(/retry in (\d+(?:\.\d+)?)\s*(?:s|second)/i);
+  return m ? parseFloat(m[1]) * 1000 : null;
 }
 
 /**
- * Executes a function with retry logic that correctly handles HTTP 429
- * rate-limit responses from the Google Gemini API.
+ * Resolves the correct wait duration for a 429 error.
+ * Priority: Retry-After header → Google message hint → 45s default.
+ */
+function computeRateLimitDelay(error: any, message: string): number {
+  const retryAfterDelay = parseRetryAfter(getRetryAfterHeader(error));
+  if (retryAfterDelay !== null) return retryAfterDelay + 1000;
+  const googleDelay = parseGoogleRetryMessage(message);
+  if (googleDelay !== null) return googleDelay + 2000;
+  return 45000; // 45s default
+}
+
+function isRateLimitError(status: number | undefined, message: string): boolean {
+  return (
+    status === 429 ||
+    message.toLowerCase().includes("rate limit") ||
+    message.toLowerCase().includes("quota")
+  );
+}
+
+function isTransientError(
+  status: number | undefined,
+  message: string,
+  errorName: string | undefined
+): boolean {
+  return (
+    status === 429 ||
+    status === 500 ||
+    status === 503 ||
+    message.toLowerCase().includes("rate limit") ||
+    message.toLowerCase().includes("quota") ||
+    message.toLowerCase().includes("fetch failed") ||
+    message.toLowerCase().includes("timeout") ||
+    message.toLowerCase().includes("aborted") ||
+    errorName === "AbortError"
+  );
+}
+
+// ─── Public API ────────────────────────────────────────────────────────────
+
+/**
+ * Executes a Gemini generation function with automatic model fallback on
+ * HTTP 429 quota / rate-limit errors.
+ *
+ * Algorithm for each model in GEMINI_FALLBACK_MODELS:
+ *   1. Call fn(model).
+ *   2. On 429 (attempt 1): read Google's suggested retry delay, wait, retry once.
+ *   3. On 429 (attempt 2): advance to the next model.
+ *   4. On other transient errors (500, 503, timeout): advance to the next model immediately.
+ *   5. On non-transient errors: throw immediately — no fallback will help.
+ *
+ * @param fn    A factory that receives the resolved model name and returns a Promise.
+ * @param label Short label used in log messages (e.g. "generate-spec").
+ */
+export async function withGeminiFallback<T>(
+  fn: (model: string) => Promise<T>,
+  label = "gemini"
+): Promise<T> {
+  for (let mi = 0; mi < GEMINI_FALLBACK_MODELS.length; mi++) {
+    const model = GEMINI_FALLBACK_MODELS[mi];
+    const nextModel = GEMINI_FALLBACK_MODELS[mi + 1];
+
+    console.log(
+      `[Gemini:${label}] Attempt with model ${mi + 1}/${GEMINI_FALLBACK_MODELS.length}: ${model}`
+    );
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const result = await fn(model);
+        if (mi > 0 || attempt > 1) {
+          console.log(
+            `[Gemini:${label}] SUCCESS — model: ${model}, model attempt: ${mi + 1}, request attempt: ${attempt}`
+          );
+        }
+        return result;
+      } catch (err: any) {
+        const status: number | undefined = err?.status || err?.statusCode;
+        const message: string = err?.message || String(err);
+        const rateLimit = isRateLimitError(status, message);
+        const transient = isTransientError(status, message, err?.name);
+
+        if (!transient) {
+          // Permanent error — no model switch will help
+          console.error(
+            `[Gemini:${label}] Non-transient error on ${model}: ${message.slice(0, 200)}`
+          );
+          throw err;
+        }
+
+        if (rateLimit && attempt === 1) {
+          // First 429 on this model: wait the suggested delay and retry once
+          const delayMs = computeRateLimitDelay(err, message);
+          console.warn(
+            `[Gemini:${label}] Rate limit on ${model} (attempt 1). ` +
+            `Waiting ${Math.round(delayMs / 1000)}s before retry same model...`
+          );
+          await new Promise((r) => setTimeout(r, delayMs));
+          // continue inner loop → attempt 2
+        } else {
+          // Either: 429 persists after retry, or other transient error
+          if (rateLimit) {
+            console.warn(
+              `[Gemini:${label}] Rate limit on ${model} persists after retry. ` +
+              (nextModel ? `Falling back to ${nextModel}...` : "All models exhausted.")
+            );
+          } else {
+            console.warn(
+              `[Gemini:${label}] Transient error on ${model}: ${message.slice(0, 150)}. ` +
+              (nextModel ? `Falling back to ${nextModel}...` : "All models exhausted.")
+            );
+          }
+          break; // advance to next model
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    `[Gemini:${label}] All models exhausted (${GEMINI_FALLBACK_MODELS.join(" → ")}). No successful response.`
+  );
+}
+
+/**
+ * Generic retry helper — kept for backward compatibility.
+ * For Gemini calls, prefer withGeminiFallback() which also handles model rotation.
  */
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  options: {
-    maxRetries?: number;
-  } = {}
+  options: { maxRetries?: number } = {}
 ): Promise<T> {
   const maxRetries = options.maxRetries ?? 3;
-  const backoffSequence = [2000, 5000, 10000, 20000]; // 2s, 5s, 10s, 20s
-  const maxFallbackDelay = 30000; // Cap backoff at 30s
+  const backoffSequence = [2000, 5000, 10000, 20000];
+  const maxFallbackDelay = 30000;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error: any) {
-      const status = error?.status || error?.statusCode;
+      const status: number | undefined = error?.status || error?.statusCode;
       const message: string = error?.message || String(error);
+      const rateLimit = isRateLimitError(status, message);
+      const transient = isTransientError(status, message, error?.name);
 
-      const isRateLimit =
-        status === 429 ||
-        message.toLowerCase().includes("rate limit") ||
-        message.toLowerCase().includes("quota");
-
-      const isTransient =
-        isRateLimit ||
-        status === 500 ||
-        status === 503 ||
-        message.toLowerCase().includes("fetch failed") ||
-        message.toLowerCase().includes("timeout") ||
-        message.toLowerCase().includes("aborted") ||
-        error?.name === "AbortError";
-
-      if (!isTransient || attempt === maxRetries) {
-        throw error;
-      }
+      if (!transient || attempt === maxRetries) throw error;
 
       let delayMs: number;
-
-      if (isRateLimit) {
-        // 1. Try Retry-After header
-        const retryAfterVal = getRetryAfterHeader(error);
-        const retryAfterDelay = parseRetryAfter(retryAfterVal);
-
-        if (retryAfterDelay !== null) {
-          delayMs = retryAfterDelay + 1000; // Add 1s safety buffer
-          console.warn(
-            `[Gemini] Rate limit hit (attempt ${attempt}/${maxRetries}). ` +
-            `Waiting ${Math.round(delayMs / 1000)}s based on Retry-After header...`
-          );
-        } else {
-          // 2. Try Google's "retry in Xs" text
-          const googleSuggestedDelay = parseGoogleRetryMessage(message);
-          if (googleSuggestedDelay !== null) {
-            delayMs = googleSuggestedDelay + 2000; // Add 2s safety buffer
-            console.warn(
-              `[Gemini] Rate limit hit (attempt ${attempt}/${maxRetries}). ` +
-              `Waiting ${Math.round(delayMs / 1000)}s based on Google retry hint...`
-            );
-          } else {
-            // 3. Fall back to exponential backoff with jitter
-            const baseDelay = backoffSequence[attempt - 1] ?? maxFallbackDelay;
-            const jitter = Math.random() * 1000;
-            delayMs = Math.min(baseDelay + jitter, maxFallbackDelay);
-            console.warn(
-              `[Gemini] Rate limit hit (attempt ${attempt}/${maxRetries}) with no retry headers or messages. ` +
-              `Falling back to backoff delay of ${Math.round(delayMs / 1000)}s...`
-            );
-          }
-        }
-      } else {
-        // For non-rate-limit transient errors, fall back to backoff sequence with jitter
-        const baseDelay = backoffSequence[attempt - 1] ?? maxFallbackDelay;
-        const jitter = Math.random() * 1000;
-        delayMs = Math.min(baseDelay + jitter, maxFallbackDelay);
+      if (rateLimit) {
+        delayMs = computeRateLimitDelay(error, message);
         console.warn(
-          `[Gemini] Transient error (attempt ${attempt}/${maxRetries}): ${message}. Retrying in ${Math.round(delayMs / 1000)}s...`
+          `[Gemini] Rate limit (attempt ${attempt}/${maxRetries}). ` +
+          `Waiting ${Math.round(delayMs / 1000)}s...`
+        );
+      } else {
+        const base = backoffSequence[attempt - 1] ?? maxFallbackDelay;
+        delayMs = Math.min(base + Math.random() * 1000, maxFallbackDelay);
+        console.warn(
+          `[Gemini] Transient error (attempt ${attempt}/${maxRetries}): ${message}. ` +
+          `Retrying in ${Math.round(delayMs / 1000)}s...`
         );
       }
-
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
   throw new Error("Unreachable");

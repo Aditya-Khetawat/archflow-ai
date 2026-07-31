@@ -6,7 +6,7 @@ import type { LiveblocksNode, LiveblocksEdge } from "@liveblocks/react-flow";
 import { getLiveblocks } from "@/lib/liveblocks";
 import { NODE_COLORS, SHAPE_DEFAULTS, NODE_SHAPES } from "@/types/canvas";
 import type { CanvasNode, CanvasEdge, NodeShape } from "@/types/canvas";
-import { google, GEMINI_MODEL, withRetry, initializeGemini } from "@/lib/gemini";
+import { google, GEMINI_MODEL, withGeminiFallback, initializeGemini } from "@/lib/gemini";
 
 const AI_USER_ID = "archflow-ai";
 const AI_USER_INFO = { name: "ArchFlow AI", avatar: "", color: "#6457f9" };
@@ -203,28 +203,22 @@ export const designAgent = task({
 
       console.log("[Backend] Prompt built", { canvasContextLength: canvasContext.length });
 
-      console.log(`[Gemini] Request sent using model: ${GEMINI_MODEL}`);
-      const result = await withRetry(async () => {
+      console.log(`[Gemini] Initiating request with primary model: ${GEMINI_MODEL}`);
+      const result = await withGeminiFallback(async (model) => {
         const tsRequest = new Date().toISOString()
-        console.log(`[GEMINI_TIMELINE] design-agent REQUEST sent | model: ${GEMINI_MODEL} | ts: ${tsRequest}`)
-        try {
-          const r = await generateText({
-            model: google(GEMINI_MODEL),
-            system: buildSystemPrompt(),
-            prompt: `User request: ${payload.prompt}\n\n${canvasContext}`,
-            tools: canvasTools,
-            toolChoice: "required",
-            abortSignal: AbortSignal.timeout(30000), // 30 second timeout
-          });
-          const tsResponse = new Date().toISOString()
-          console.log(`[GEMINI_TIMELINE] design-agent RESPONSE received | ts: ${tsResponse}`)
-          return r
-        } catch (innerErr: any) {
-          const tsFailure = new Date().toISOString()
-          console.error(`[GEMINI_TIMELINE] design-agent REQUEST FAILED | ts: ${tsFailure} | status: ${innerErr?.status} | msg: ${String(innerErr?.message).slice(0, 200)}`)
-          throw innerErr
-        }
-      });
+        console.log(`[GEMINI_TIMELINE] design-agent REQUEST sent | model: ${model} | ts: ${tsRequest}`)
+        const r = await generateText({
+          model: google(model),
+          system: buildSystemPrompt(),
+          prompt: `User request: ${payload.prompt}\n\n${canvasContext}`,
+          tools: canvasTools,
+          toolChoice: "required",
+          abortSignal: AbortSignal.timeout(30000), // 30 second timeout
+        });
+        const tsResponse = new Date().toISOString()
+        console.log(`[GEMINI_TIMELINE] design-agent RESPONSE received | model: ${model} | ts: ${tsResponse}`)
+        return r
+      }, "design-agent");
       console.log("[Gemini] Response received");
 
       const toolCalls = (result.steps.flatMap((s) => s.toolCalls) || []) as ToolCall[];
