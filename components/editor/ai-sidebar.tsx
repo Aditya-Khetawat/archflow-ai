@@ -605,7 +605,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
       <Dialog open={specModalOpen} onOpenChange={(open) => { if (!open) handleModalClose() }}>
         <DialogContent
           showCloseButton
-          className="max-w-2xl border-border-default bg-bg-surface"
+          className="w-[80vw] max-w-[80vw] border-border-default bg-bg-surface"
         >
           <DialogHeader>
             <DialogTitle className="pr-6 text-sm font-medium text-text-primary">
@@ -613,7 +613,7 @@ export function AiSidebar({ isOpen, onClose, roomId, projectId }: AiSidebarProps
             </DialogTitle>
           </DialogHeader>
 
-          <ScrollArea className="max-h-[60vh] rounded-xl border border-border-subtle bg-bg-elevated">
+          <ScrollArea className="max-h-[calc(85vh-8rem)] rounded-xl border border-border-subtle bg-bg-elevated">
             <div className="p-4">
               {specContentLoading ? (
                 <div className="flex items-center justify-center py-8">
